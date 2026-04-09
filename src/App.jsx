@@ -15,9 +15,9 @@ const CONFIGS = {
     ],
     reverseItems: [],
     norms: {
-      restriction: { low: 1.8, high: 3.0, ref: "2.23" },
-      emotionnel:  { low: 1.7, high: 2.9, ref: "2.21" },
-      externe:     { low: 2.7, high: 3.3, ref: "3.03" },
+      restriction: { low: 2.0, high: 3.0, ref: "seuil ≥ 3" },
+      emotionnel:  { low: 2.0, high: 3.0, ref: "seuil ≥ 3" },
+      externe:     { low: 2.0, high: 3.0, ref: "seuil ≥ 3" },
     },
     ref: "van Strien et al. (1986)"
   },
@@ -105,7 +105,7 @@ function barColor(q, key, val) {
   if (q === "DEBQ") {
     const n = CONFIGS.DEBQ.norms[key];
     if (!n) return "#6366f1";
-    return val > n.high ? "#dc2626" : val < n.low ? "#2563eb" : "#d97706";
+    return val >= n.high ? "#dc2626" : val < n.low ? "#2563eb" : "#d97706";
   }
   return val >= 3.5 ? "#16a34a" : val >= 2.5 ? "#d97706" : "#dc2626";
 }
@@ -491,7 +491,7 @@ export default function ScorAlim() {
                       let interp = "";
                       if (q==="DEBQ") {
                         const n = CONFIGS.DEBQ.norms[s.key];
-                        interp = val > n.high ? "Élevé" : val < n.low ? "Faible" : "Modéré";
+                        interp = val >= n.high ? "Positif" : val < n.low ? "Faible" : "Modéré";
                       } else {
                         interp = val >= 3.5 ? "Élevé" : val >= 2.5 ? "Modéré" : "Faible";
                       }
