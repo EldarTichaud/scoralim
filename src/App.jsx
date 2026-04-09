@@ -127,14 +127,33 @@ export default function ScorAlim() {
     r.readAsDataURL(f);
   });
 
+  /* Compress image via canvas — max 1200px, quality 0.75 — keeps under Vercel 4.5MB limit */
+  const compressImage = (dataUrl) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else                { width = Math.round(width * MAX / height);  height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.75).split(",")[1]);
+    };
+    img.src = dataUrl;
+  });
+
   const readFile = async (file) => {
     if (!file) return;
     setError(null);
     const ext = (file.name?.split(".").pop() || "").toLowerCase();
     try {
       if (file.type?.startsWith("image/") || ["jpg","jpeg","png","webp"].includes(ext)) {
-        const b64 = await toB64(file);
-        setFileList(prev => [...prev, { type:"image", data:b64.split(",")[1], mediaType:file.type||"image/jpeg", name:file.name }]);
+        const b64full = await toB64(file);
+        const compressed = await compressImage(b64full);
+        setFileList(prev => [...prev, { type:"image", data:compressed, mediaType:"image/jpeg", name:file.name }]);
       } else if (ext==="pdf" || file.type?.includes("pdf")) {
         const b64 = await toB64(file);
         // PDF replaces everything (auto-paginated)
