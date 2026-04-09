@@ -66,23 +66,23 @@ const CONFIGS = {
 
 const PROMPTS = {
   DEBQ: `Analyse ce questionnaire DEBQ (33 items, échelle 1-5 : 1=jamais, 2=rarement, 3=parfois, 4=souvent, 5=très souvent).
-Identifie la valeur cochée/entourée/sélectionnée pour chaque item de 1 à 33.
+Pour chaque item de 1 à 33, indique la valeur cochée/entourée ET ta confiance dans la lecture.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
-{"items":[v1,v2,...,v33]}
-Chaque valeur est un entier 1-5, ou null si illisible.`,
+{"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
+"v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
   IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
-Identifie la valeur cochée/entourée pour chaque item de 1 à 18.
+Pour chaque item de 1 à 18, indique la valeur cochée/entourée ET ta confiance dans la lecture.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
-{"items":[v1,v2,...,v18]}
-Chaque valeur est un entier 1-5, ou null si illisible.`,
+{"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
+"v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
   BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 items).
-Chaque item présente 3 ou 4 propositions (phrases). Le patient en coche/entoure une seule.
-Identifie quelle proposition est sélectionnée pour chaque item.
+Chaque item présente 3 ou 4 propositions. Le patient en coche/entoure une seule.
+Pour chaque item de 1 à 16, indique l'index de la proposition choisie ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
-{"items":[i1,i2,...,i16]}
-Chaque valeur est l'INDEX de la proposition choisie (0=1ère, 1=2ème, 2=3ème, 3=4ème), ou null si illisible.`
+{"items":[{"v":0,"c":1},{"v":2,"c":0},...]}
+"v" = index choisi (0=1ère proposition, 1=2ème, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`
 };
 
 /* ─── SCORING ────────────────────────────────────────────────── */
@@ -123,12 +123,13 @@ function barColor(q, key, val) {
 
 /* ─── MAIN APP ───────────────────────────────────────────────── */
 export default function ScorAlim() {
-  const [step, setStep]         = useState("select"); // select | upload | processing | results
-  const [q, setQ]               = useState(null);
-  const [fileList, setFileList] = useState([]); // [{type, data, mediaType, name}]
-  const [scores, setScores]     = useState(null);
-  const [error, setError]       = useState(null);
-  const [patient, setPatient]   = useState({ name:"", date: new Date().toLocaleDateString("fr-FR") });
+  const [step, setStep]               = useState("select"); // select | upload | processing | review | results
+  const [q, setQ]                     = useState(null);
+  const [fileList, setFileList]       = useState([]);
+  const [extractedItems, setExtracted]= useState(null); // [{v, c}]
+  const [scores, setScores]           = useState(null);
+  const [error, setError]             = useState(null);
+  const [patient, setPatient]         = useState({ name:"", date: new Date().toLocaleDateString("fr-FR") });
 
   /* File reading */
   const toB64 = f => new Promise((res,rej) => {
@@ -218,20 +219,32 @@ export default function ScorAlim() {
       if (!res.ok) throw new Error(data.error?.message || "Erreur API");
 
       const text = data.content.map(c=>c.text||"").join("");
-      const m = text.match(/\{[\s\S]*?\}/);
+      const m = text.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("JSON introuvable dans la réponse");
-      const { items } = JSON.parse(m[0]);
-      if (!Array.isArray(items)) throw new Error("Format de réponse inattendu");
+      const parsed = JSON.parse(m[0]);
+      if (!Array.isArray(parsed.items)) throw new Error("Format de réponse inattendu");
 
-      setScores(calcScores(q, items));
-      setStep("results");
+      // Normalize — accept both {v,c} objects and bare values (fallback)
+      const normalized = parsed.items.map(item =>
+        item !== null && typeof item === "object"
+          ? { v: item.v ?? null, c: item.c ?? 1 }
+          : { v: item ?? null, c: 1 }
+      );
+
+      setExtracted(normalized);
+      setStep("review");
     } catch(e) {
       setError("Erreur : " + e.message);
       setStep("upload");
     }
   };
 
-  const reset = () => { setStep("select"); setQ(null); setFileList([]); setScores(null); setError(null); };
+  const confirmItems = (items) => {
+    setScores(calcScores(q, items.map(i => i.v)));
+    setStep("results");
+  };
+
+  const reset = () => { setStep("select"); setQ(null); setFileList([]); setExtracted(null); setScores(null); setError(null); };
   const cfg = q ? CONFIGS[q] : null;
 
   const chartData = () => {
@@ -445,6 +458,92 @@ export default function ScorAlim() {
             </div>
           )}
 
+          {/* ══ STEP 3b — REVIEW ══ */}
+          {step === "review" && extractedItems && cfg && (() => {
+            const uncertain = extractedItems.filter(i => i.c === 0 || i.v === null).length;
+            const [items, setItems] = [extractedItems, setExtracted];
+            const maxVal = q === "BES" ? null : 5;
+            const isBES = q === "BES";
+
+            const updateItem = (idx, val) => {
+              setExtracted(prev => prev.map((it, i) => i === idx ? { v: val, c: 1 } : it));
+            };
+
+            return (
+              <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:12}}>
+                {/* Header */}
+                <div style={{background:"white",borderRadius:16,padding:16,border:"1px solid #f1f5f9"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <span className="mono" style={{padding:"3px 10px",borderRadius:20,background:cfg.color,color:"white",fontSize:11,fontWeight:700}}>{cfg.name}</span>
+                    <span style={{fontSize:13,color:"#475569",fontWeight:500}}>Vérification des réponses extraites</span>
+                  </div>
+                  {uncertain > 0 ? (
+                    <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 12px",fontSize:12,color:"#92400e"}}>
+                      ⚠️ <strong>{uncertain} item(s)</strong> incertain(s) ou illisible(s) — surlignés en orange. Corrigez-les avant de calculer.
+                    </div>
+                  ) : (
+                    <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 12px",fontSize:12,color:"#166534"}}>
+                      ✅ Tous les items ont été lus avec confiance. Vérifiez si nécessaire.
+                    </div>
+                  )}
+                </div>
+
+                {/* Items grid */}
+                <div style={{background:"white",borderRadius:16,padding:14,border:"1px solid #f1f5f9"}}>
+                  <p style={{fontSize:11,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:"0 0 12px"}}>
+                    Réponses extraites — tapez pour modifier
+                  </p>
+                  <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(72px, 1fr))", gap:6}}>
+                    {items.map((item, idx) => {
+                      const isUncertain = item.c === 0 || item.v === null;
+                      const options = isBES
+                        ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
+                        : [1,2,3,4,5];
+                      return (
+                        <div key={idx} style={{
+                          border: `2px solid ${isUncertain ? "#f97316" : "#e2e8f0"}`,
+                          borderRadius: 10,
+                          padding: "6px 4px",
+                          background: isUncertain ? "#fff7ed" : "#fafafa",
+                          display: "flex", flexDirection: "column", alignItems: "center", gap: 3
+                        }}>
+                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
+                            {isUncertain ? "⚠️" : ""} Q{idx+1}
+                          </span>
+                          <select
+                            value={item.v ?? ""}
+                            onChange={e => updateItem(idx, e.target.value === "" ? null : +e.target.value)}
+                            style={{
+                              width:"100%", fontSize:13, fontWeight:700,
+                              color: isUncertain ? "#ea580c" : "#1e293b",
+                              border:"none", background:"transparent",
+                              textAlign:"center", cursor:"pointer", outline:"none"
+                            }}
+                          >
+                            <option value="">—</option>
+                            {options.map(o => (
+                              <option key={o} value={o}>{isBES ? `P${o+1}` : o}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => confirmItems(extractedItems)}
+                  style={{padding:"14px",borderRadius:14,fontWeight:700,fontSize:14,color:"white",border:"none",cursor:"pointer",background:`linear-gradient(135deg, ${cfg.color}, ${cfg.color}cc)`}}>
+                  Calculer les scores →
+                </button>
+                <button onClick={() => { setStep("upload"); setExtracted(null); }}
+                  style={{padding:"10px",borderRadius:12,background:"transparent",border:"none",color:"#94a3b8",fontSize:13,cursor:"pointer"}}>
+                  ↺ Recommencer l'analyse
+                </button>
+              </div>
+            );
+          })()}
+
           {/* ══ STEP 4 — RESULTS ══ */}
           {step === "results" && scores && cfg && (
             <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -571,7 +670,7 @@ export default function ScorAlim() {
 
               {/* Actions */}
               <div className="no-print" style={{display:"flex",gap:10}}>
-                <button onClick={()=>{setStep("upload");setFileList([]);setScores(null);}}
+                <button onClick={()=>{setStep("upload");setFileList([]);setScores(null);setExtracted(null);}}
                   style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid #e2e8f0",background:"white",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer"}}>
                   ↺ Nouvel import
                 </button>
