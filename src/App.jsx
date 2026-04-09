@@ -564,6 +564,11 @@ export default function ScorAlim() {
                 <strong>Note clinique :</strong> Scores calculés par extraction automatique — vérifiez en cas d'ambiguïté visuelle. Normes indicatives. Référence : {cfg.ref}.
               </div>
 
+              {/* Copyright */}
+              <div style={{textAlign:"center",fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                Scor'Alim · Créé par <strong style={{color:"#64748b"}}>Romain Lecomte</strong>, diététicien-nutritionniste · © {new Date().getFullYear()} Tous droits réservés
+              </div>
+
               {/* Actions */}
               <div className="no-print" style={{display:"flex",gap:10}}>
                 <button onClick={()=>{setStep("upload");setFileList([]);setScores(null);}}
@@ -583,6 +588,12 @@ export default function ScorAlim() {
           )}
 
         </div>
+
+        {/* Footer permanent */}
+        <div className="no-print" style={{textAlign:"center",fontSize:10,color:"#64748b",padding:"12px 16px 20px"}}>
+          Scor'Alim · Créé par <strong>Romain Lecomte</strong>, diététicien-nutritionniste · © {new Date().getFullYear()} Tous droits réservés
+        </div>
+
       </div>
     </>
   );
