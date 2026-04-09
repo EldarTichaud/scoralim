@@ -9,11 +9,11 @@ const CONFIGS = {
     color: "#4f46e5", light: "#eef2ff", itemCount: 33,
     caption: "33 items · Restriction · Émotionnel · Externe",
     subscales: [
-      { key: "restriction", label: "Restriction cognitive", items: Array.from({length:10},(_,i)=>i+1) },
-      { key: "emotionnel",  label: "Alimentation émotionnelle", items: Array.from({length:13},(_,i)=>i+11) },
-      { key: "externe",     label: "Alimentation externe", items: Array.from({length:10},(_,i)=>i+24) },
+      { key: "restriction", label: "Restriction cognitive",       items: [4,7,11,14,17,19,22,26,29,31] },
+      { key: "emotionnel",  label: "Alimentation émotionnelle",   items: [1,3,5,8,10,13,16,20,23,25,28,32] },
+      { key: "externe",     label: "Alimentation externe",        items: [2,6,9,12,15,18,21,24,27,30,33] },
     ],
-    reverseItems: [],
+    reverseItems: [21],
     norms: {
       restriction: { low: 2.0, high: 3.0, ref: "seuil ≥ 3" },
       emotionnel:  { low: 2.0, high: 3.0, ref: "seuil ≥ 3" },
@@ -23,15 +23,14 @@ const CONFIGS = {
   },
   IES2: {
     name: "IES-2", fullName: "Intuitive Eating Scale-2",
-    color: "#059669", light: "#ecfdf5", itemCount: 23,
-    caption: "23 items · 4 dimensions · Alimentation intuitive",
+    color: "#059669", light: "#ecfdf5", itemCount: 18,
+    caption: "18 items · 3 dimensions · Alimentation intuitive",
     subscales: [
-      { key: "upe",  label: "Permission inconditionnelle", items: [1,2,3,4,5,6] },
-      { key: "epr",  label: "Raisons physiques vs émotionnelles", items: [7,8,9,10,11,12] },
-      { key: "rhsc", label: "Signaux faim / satiété", items: [13,14,15,16,17] },
-      { key: "bfcc", label: "Congruence corps-alimentation", items: [18,19,20,21,22,23] },
+      { key: "permission",  label: "Permission inconditionnelle",          items: [1,3,8,15] },
+      { key: "physique",    label: "Raisons physiques vs émotionnelles",   items: [2,4,9,10,11,12,13,14] },
+      { key: "signaux",     label: "Signaux faim / satiété",               items: [5,6,7,16,17,18] },
     ],
-    reverseItems: [1,2,4,5,7,8,9,10,11,12],
+    reverseItems: [1,2,3,4,8,9,10],
     ref: "Tylka & Kroon Van Diest (2013)"
   },
   BES: {
@@ -39,15 +38,27 @@ const CONFIGS = {
     color: "#d97706", light: "#fffbeb", itemCount: 16,
     caption: "16 items · Accès hyperphagiques",
     weights: [
-      [0,0,1,3],[0,1,2,3],[0,0,1,3],[0,0,1,3],
-      [0,0,1,3],[0,1,2,3],[0,1,2,3],[0,0,1,3],
-      [0,1,2,3],[0,0,1,3],[0,1,2,3],[0,1,2,3],
-      [0,1,2,3],[0,1,3],[0,1,3],[0,1,3],
+      [0,0,1,3],   // item 1
+      [0,1,2,3],   // item 2
+      [0,1,3,3],   // item 3
+      [0,0,0,2],   // item 4
+      [0,1,2,3],   // item 5
+      [0,1,3],     // item 6 — 3 propositions
+      [0,2,3,3],   // item 7
+      [0,1,2,3],   // item 8
+      [0,1,2,3],   // item 9
+      [0,1,2,3],   // item 10
+      [0,1,2,3],   // item 11
+      [0,1,2,3],   // item 12
+      [0,0,2,3],   // item 13
+      [0,1,2,3],   // item 14
+      [0,1,2,3],   // item 15
+      [0,1,2],     // item 16 — 3 propositions
     ],
     thresholds: [
-      { min:0,  max:16, label:"Absent / Minimal", color:"#16a34a", bg:"#f0fdf4" },
-      { min:17, max:26, label:"Modéré",            color:"#d97706", bg:"#fffbeb" },
-      { min:27, max:46, label:"Sévère",             color:"#dc2626", bg:"#fef2f2" },
+      { min:0,  max:17, label:"Absent / Minimal",            color:"#16a34a", bg:"#f0fdf4" },
+      { min:18, max:26, label:"Modéré (probable BED)",       color:"#d97706", bg:"#fffbeb" },
+      { min:27, max:46, label:"Sévère",                      color:"#dc2626", bg:"#fef2f2" },
     ],
     ref: "Gormally et al. (1982)"
   }
@@ -60,10 +71,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[v1,v2,...,v33]}
 Chaque valeur est un entier 1-5, ou null si illisible.`,
 
-  IES2: `Analyse ce questionnaire IES-2 (23 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
-Identifie la valeur cochée/entourée pour chaque item de 1 à 23.
+  IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
+Identifie la valeur cochée/entourée pour chaque item de 1 à 18.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
-{"items":[v1,v2,...,v23]}
+{"items":[v1,v2,...,v18]}
 Chaque valeur est un entier 1-5, ou null si illisible.`,
 
   BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 items).
