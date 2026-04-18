@@ -66,12 +66,16 @@ const CONFIGS = {
 
 const PROMPTS = {
   DEBQ: `Analyse ce questionnaire DEBQ (33 items).
-Règle importante : si la réponse cochée/entourée commence par "Je ne" (ex : "Je ne mange pas plus que d'habitude"), la valeur est 0.
-Pour toutes les autres réponses, l'échelle est : 1=jamais, 2=rarement, 3=parfois, 4=souvent, 5=très souvent.
-Pour chaque item de 1 à 33, indique la valeur cochée/entourée ET ta confiance dans la lecture.
+Mise en page : chaque item présente ses options sur une ligne horizontale :
+□ Jamais  □ Rarement  □ Parfois  □ Souvent  □ Très souvent  (□ Je ne...)
+Le patient coche une seule case en traçant une croix à l'intérieur (☒).
+Lis attentivement quelle case contient la croix — ne te fie pas à la proximité spatiale, inspecte l'intérieur de chaque case.
+L'option "Je ne..." peut apparaître en fin de ligne ou déborder sur la ligne suivante : traite-la comme une option à part entière.
+Règle de cotation : "Je ne..." = 0 ; Jamais = 1 ; Rarement = 2 ; Parfois = 3 ; Souvent = 4 ; Très souvent = 5.
+Pour chaque item de 1 à 33, indique la valeur ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":0,"c":1},...]}
-"v" = valeur lue (entier 0-5, ou null si illisible). 0 = réponse "Je ne...". "c" = confiance : 1=certain, 0=incertain ou illisible.`,
+"v" = valeur lue (entier 0-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
   IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
 Pour chaque item de 1 à 18, indique la valeur cochée/entourée ET ta confiance dans la lecture.
