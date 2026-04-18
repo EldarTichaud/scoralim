@@ -65,11 +65,13 @@ const CONFIGS = {
 };
 
 const PROMPTS = {
-  DEBQ: `Analyse ce questionnaire DEBQ (33 items, échelle 1-5 : 1=jamais, 2=rarement, 3=parfois, 4=souvent, 5=très souvent).
+  DEBQ: `Analyse ce questionnaire DEBQ (33 items).
+Règle importante : si la réponse cochée/entourée commence par "Je ne" (ex : "Je ne mange pas plus que d'habitude"), la valeur est 0.
+Pour toutes les autres réponses, l'échelle est : 1=jamais, 2=rarement, 3=parfois, 4=souvent, 5=très souvent.
 Pour chaque item de 1 à 33, indique la valeur cochée/entourée ET ta confiance dans la lecture.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
-{"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
-"v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
+{"items":[{"v":3,"c":1},{"v":0,"c":1},...]}
+"v" = valeur lue (entier 0-5, ou null si illisible). 0 = réponse "Je ne...". "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
   IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
 Pour chaque item de 1 à 18, indique la valeur cochée/entourée ET ta confiance dans la lecture.
@@ -100,7 +102,8 @@ function calcScores(q, items) {
   }
   const cfg = CONFIGS[q];
   const rev = cfg.reverseItems || [];
-  const proc = items.map((v,i) => v == null ? null : (rev.includes(i+1) ? 6-v : v));
+  // v=0 = réponse "Je ne..." → toujours 0, jamais inversé
+  const proc = items.map((v,i) => v == null ? null : (v === 0 ? 0 : rev.includes(i+1) ? 6-v : v));
   const subs = {};
   cfg.subscales.forEach(s => {
     const vals = s.items.map(n => proc[n-1]).filter(v => v != null);
@@ -498,7 +501,7 @@ export default function ScorAlim() {
                       const isUncertain = item.c === 0 || item.v === null;
                       const options = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
-                        : [1,2,3,4,5];
+                        : q === "DEBQ" ? [0,1,2,3,4,5] : [1,2,3,4,5];
                       return (
                         <div key={idx} style={{
                           border: `2px solid ${isUncertain ? "#f97316" : "#e2e8f0"}`,
