@@ -238,7 +238,7 @@ export default function ScorAlim() {
           // Compléter jusqu'à 33 items si des réponses manquent — la review step gérera les null (orange)
           while (items.length < 33) items.push({ v: null, c: 0 });
           const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
-          setReviewItems(normalized);
+          setExtracted(normalized);
           setStep("review");
           return;
         }
