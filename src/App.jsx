@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import * as mammoth from "mammoth";
+import JSZip from "jszip";
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const CONFIGS = {
@@ -64,21 +65,29 @@ const CONFIGS = {
   }
 };
 
-/* Parse un DOCX DEBQ rempli numériquement (☒ = case cochée) */
-function parseDebqDocx(text) {
-  const regex = /☒\s*([^\n☐☒]{1,80})/g;
+/* Parse un DOCX DEBQ rempli numériquement — lit le XML brut word/document.xml */
+function parseDebqDocx(xml) {
+  // Extraire le texte des balises <w:t> en préservant les caractères spéciaux (☒ U+2612)
+  const textBlocks = [];
+  const tagRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = tagRe.exec(xml)) !== null) {
+    textBlocks.push(m[1]);
+  }
+  const text = textBlocks.join(" ");
+
   const items = [];
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const label = match[1].trim().toLowerCase();
+  const regex = /☒\s*([^☐☒]{1,120})/g;
+  while ((m = regex.exec(text)) !== null) {
+    const label = m[1].trim().toLowerCase();
     let v;
-    if (label.startsWith('je ') || label.startsWith("j'"))      v = 0;
-    else if (label.startsWith("très souvent"))                       v = 5;
-    else if (label.startsWith("souvent"))                            v = 4;
-    else if (label.startsWith("parfois"))                            v = 3;
-    else if (label.startsWith("rarement"))                           v = 2;
-    else if (label.startsWith("jamais"))                             v = 1;
-    else                                                              v = null;
+    if (label.startsWith("je ") || label.startsWith("j\u2019") || label.startsWith("j'")) v = 0;
+    else if (label.startsWith("très souvent")) v = 5;
+    else if (label.startsWith("souvent"))      v = 4;
+    else if (label.startsWith("parfois"))      v = 3;
+    else if (label.startsWith("rarement"))     v = 2;
+    else if (label.startsWith("jamais"))       v = 1;
+    else                                        v = null;
     items.push({ v, c: v !== null ? 1 : 0 });
   }
   return items;
@@ -199,8 +208,7 @@ export default function ScorAlim() {
         setFileList([{ type:"pdf", data:b64.split(",")[1], name:file.name }]);
       } else if (ext==="docx") {
         const buf = await file.arrayBuffer();
-        const res = await mammoth.extractRawText({ arrayBuffer:buf });
-        setFileList([{ type:"text", data:res.value, name:file.name }]);
+        setFileList([{ type:"docx", arrayBuffer:buf, name:file.name }]);
       } else {
         setError("Format non supporté. Utilisez JPG, PNG, PDF ou DOCX.");
       }
@@ -221,17 +229,22 @@ export default function ScorAlim() {
           { type:"document", source:{ type:"base64", media_type:"application/pdf", data:first.data } },
           { type:"text", text:prompt }
         ];
-      } else if (first.type === "text") {
-        // DOCX numérique DEBQ : parsing direct des ☒ sans appel API
+      } else if (first.type === "docx") {
+        // DOCX numérique DEBQ : lecture XML directe via JSZip
         if (q === "DEBQ") {
-          const items = parseDebqDocx(first.data);
-          if (items.length !== 33) throw new Error(`Parsing DOCX : ${items.length} items trouvés (attendu 33)`);
-          const normalized = items.map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+          const zip = await JSZip.loadAsync(first.arrayBuffer);
+          const xmlRaw = await zip.file("word/document.xml").async("string");
+          const items = parseDebqDocx(xmlRaw);
+          // Compléter jusqu'à 33 items si des réponses manquent — la review step gérera les null (orange)
+          while (items.length < 33) items.push({ v: null, c: 0 });
+          const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
           setReviewItems(normalized);
           setStep("review");
           return;
         }
-        content = `${prompt}\n\nContenu du questionnaire :\n${first.data}`;
+        // Autres questionnaires en DOCX : fallback mammoth
+        const res = await mammoth.extractRawText({ arrayBuffer: first.arrayBuffer });
+        content = `${prompt}\n\nContenu du questionnaire :\n${res.value}`;
       } else {
         // One or more images — send all image blocks + prompt at the end
         const pageLabel = fileList.length > 1
