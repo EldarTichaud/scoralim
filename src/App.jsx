@@ -67,30 +67,48 @@ const CONFIGS = {
 
 /* Parse un DOCX DEBQ rempli numériquement — lit le XML brut word/document.xml */
 function parseDebqDocx(xml) {
-  // Extraire le texte des balises <w:t> en préservant les caractères spéciaux (☒ U+2612)
+  // Extraire le texte des balises <w:t>
   const textBlocks = [];
   const tagRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
   let m;
-  while ((m = tagRe.exec(xml)) !== null) {
-    textBlocks.push(m[1]);
-  }
+  while ((m = tagRe.exec(xml)) !== null) textBlocks.push(m[1]);
   const text = textBlocks.join(" ");
 
-  const items = [];
-  const regex = /☒\s*([^☐☒]{1,120})/g;
-  while ((m = regex.exec(text)) !== null) {
-    const label = m[1].trim().toLowerCase();
-    let v;
-    if (label.startsWith("je ") || label.startsWith("j\u2019") || label.startsWith("j'")) v = 0;
-    else if (label.startsWith("très souvent")) v = 5;
-    else if (label.startsWith("souvent"))      v = 4;
-    else if (label.startsWith("parfois"))      v = 3;
-    else if (label.startsWith("rarement"))     v = 2;
-    else if (label.startsWith("jamais"))       v = 1;
-    else                                        v = null;
-    items.push({ v, c: v !== null ? 1 : 0 });
+  // Collecter tous les checkboxes (☒ et ☐) avec leur label
+  const allBoxes = [];
+  const boxRe = /([☒☐])\s*([^☒☐]{1,120})/g;
+  while ((m = boxRe.exec(text)) !== null) {
+    allBoxes.push({ mark: m[1], label: m[2].trim() });
   }
-  return items;
+
+  // Grouper par question : chaque groupe commence par l'option "Jamais"
+  const groups = [];
+  let current = [];
+  for (const box of allBoxes) {
+    if (box.label.toLowerCase().startsWith("jamais") && current.length > 0) {
+      groups.push(current);
+      current = [box];
+    } else {
+      current.push(box);
+    }
+  }
+  if (current.length > 0) groups.push(current);
+
+  // Pour chaque groupe, trouver la case cochée (☒)
+  return groups.map(grp => {
+    const checked = grp.find(b => b.mark === "☒");
+    if (!checked) return { v: null, c: 0 };
+    const ll = checked.label.toLowerCase();
+    let v;
+    if (ll.startsWith("je ") || ll.startsWith("j\u2019") || ll.startsWith("j'")) v = 0;
+    else if (ll.startsWith("très souvent")) v = 5;
+    else if (ll.startsWith("souvent"))      v = 4;
+    else if (ll.startsWith("parfois"))      v = 3;
+    else if (ll.startsWith("rarement"))     v = 2;
+    else if (ll.startsWith("jamais"))       v = 1;
+    else                                     v = null;
+    return { v, c: v !== null ? 1 : 0 };
+  });
 }
 
 const PROMPTS = {
@@ -509,9 +527,9 @@ export default function ScorAlim() {
 
           {/* ══ STEP 3b — REVIEW ══ */}
           {step === "review" && extractedItems && cfg && (() => {
-            const uncertain = extractedItems.filter(i => i.c === 0 || i.v === null).length;
+            const missing   = extractedItems.filter(i => i.v === null).length;
+            const uncertain = extractedItems.filter(i => i.c === 0 && i.v !== null).length;
             const [items, setItems] = [extractedItems, setExtracted];
-            const maxVal = q === "BES" ? null : 5;
             const isBES = q === "BES";
 
             const updateItem = (idx, val) => {
@@ -526,15 +544,29 @@ export default function ScorAlim() {
                     <span className="mono" style={{padding:"3px 10px",borderRadius:20,background:cfg.color,color:"white",fontSize:11,fontWeight:700}}>{cfg.name}</span>
                     <span style={{fontSize:13,color:"#475569",fontWeight:500}}>Vérification des réponses extraites</span>
                   </div>
-                  {uncertain > 0 ? (
-                    <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 12px",fontSize:12,color:"#92400e"}}>
-                      ⚠️ <strong>{uncertain} item(s)</strong> incertain(s) ou illisible(s) — surlignés en orange. Corrigez-les avant de calculer.
+                  {(missing > 0 || uncertain > 0) ? (
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {missing > 0 && (
+                        <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"8px 12px",fontSize:12,color:"#991b1b"}}>
+                          🔴 <strong>{missing} item(s)</strong> sans réponse détectée — à compléter obligatoirement.
+                        </div>
+                      )}
+                      {uncertain > 0 && (
+                        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"8px 12px",fontSize:12,color:"#92400e"}}>
+                          🟠 <strong>{uncertain} item(s)</strong> lus avec incertitude — vérifiez avant de calculer.
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 12px",fontSize:12,color:"#166534"}}>
                       ✅ Tous les items ont été lus avec confiance. Vérifiez si nécessaire.
                     </div>
                   )}
+                  {/* Légende */}
+                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b"}}>
+                    <span>🔴 Réponse manquante</span>
+                    <span>🟠 Lecture incertaine</span>
+                  </div>
                 </div>
 
                 {/* Items grid */}
@@ -544,27 +576,32 @@ export default function ScorAlim() {
                   </p>
                   <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(72px, 1fr))", gap:6}}>
                     {items.map((item, idx) => {
-                      const isUncertain = item.c === 0 || item.v === null;
+                      const isMissing   = item.v === null;
+                      const isUncertain = item.c === 0 && item.v !== null;
+                      const borderColor = isMissing ? "#ef4444" : isUncertain ? "#f97316" : "#e2e8f0";
+                      const bgColor     = isMissing ? "#fef2f2" : isUncertain ? "#fff7ed" : "#fafafa";
+                      const textColor   = isMissing ? "#dc2626" : isUncertain ? "#ea580c" : "#1e293b";
+                      const icon        = isMissing ? "🔴" : isUncertain ? "🟠" : "";
                       const options = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
                         : q === "DEBQ" ? [0,1,2,3,4,5] : [1,2,3,4,5];
                       return (
                         <div key={idx} style={{
-                          border: `2px solid ${isUncertain ? "#f97316" : "#e2e8f0"}`,
+                          border: `2px solid ${borderColor}`,
                           borderRadius: 10,
                           padding: "6px 4px",
-                          background: isUncertain ? "#fff7ed" : "#fafafa",
+                          background: bgColor,
                           display: "flex", flexDirection: "column", alignItems: "center", gap: 3
                         }}>
                           <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
-                            {isUncertain ? "⚠️" : ""} Q{idx+1}
+                            {icon} Q{idx+1}
                           </span>
                           <select
                             value={item.v ?? ""}
                             onChange={e => updateItem(idx, e.target.value === "" ? null : +e.target.value)}
                             style={{
                               width:"100%", fontSize:13, fontWeight:700,
-                              color: isUncertain ? "#ea580c" : "#1e293b",
+                              color: textColor,
                               border:"none", background:"transparent",
                               textAlign:"center", cursor:"pointer", outline:"none"
                             }}
