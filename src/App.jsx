@@ -64,6 +64,26 @@ const CONFIGS = {
   }
 };
 
+/* Parse un DOCX DEBQ rempli numériquement (☒ = case cochée) */
+function parseDebqDocx(text) {
+  const regex = /☒\s*([^\n☐☒]{1,80})/g;
+  const items = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const label = match[1].trim().toLowerCase();
+    let v;
+    if (label.startsWith('je ') || label.startsWith("j'"))      v = 0;
+    else if (label.startsWith("très souvent"))                       v = 5;
+    else if (label.startsWith("souvent"))                            v = 4;
+    else if (label.startsWith("parfois"))                            v = 3;
+    else if (label.startsWith("rarement"))                           v = 2;
+    else if (label.startsWith("jamais"))                             v = 1;
+    else                                                              v = null;
+    items.push({ v, c: v !== null ? 1 : 0 });
+  }
+  return items;
+}
+
 const PROMPTS = {
   DEBQ: `Analyse ce questionnaire DEBQ (33 items).
 Mise en page : chaque item présente ses options sur une ligne horizontale :
@@ -202,6 +222,15 @@ export default function ScorAlim() {
           { type:"text", text:prompt }
         ];
       } else if (first.type === "text") {
+        // DOCX numérique DEBQ : parsing direct des ☒ sans appel API
+        if (q === "DEBQ") {
+          const items = parseDebqDocx(first.data);
+          if (items.length !== 33) throw new Error(`Parsing DOCX : ${items.length} items trouvés (attendu 33)`);
+          const normalized = items.map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+          setReviewItems(normalized);
+          setStep("review");
+          return;
+        }
         content = `${prompt}\n\nContenu du questionnaire :\n${first.data}`;
       } else {
         // One or more images — send all image blocks + prompt at the end
