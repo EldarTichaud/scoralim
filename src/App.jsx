@@ -68,23 +68,14 @@ const CONFIGS = {
   }
 };
 
-/* Parse un DOCX DEBQ rempli numériquement — lit le XML brut word/document.xml */
-function parseDebqDocx(xml) {
-  // Extraire le texte des balises <w:t>
-  const textBlocks = [];
-  const tagRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
-  let m;
-  while ((m = tagRe.exec(xml)) !== null) textBlocks.push(m[1]);
-  const text = textBlocks.join(" ");
-
-  // Collecter tous les checkboxes (☒ et ☐) avec leur label
+/* Logique commune : parse le texte DEBQ (cases ☒/☐) quel que soit l'origine */
+function parseDebqText(text) {
   const allBoxes = [];
   const boxRe = /([☒☐])\s*([^☒☐]{1,120})/g;
+  let m;
   while ((m = boxRe.exec(text)) !== null) {
     allBoxes.push({ mark: m[1], label: m[2].trim() });
   }
-
-  // Grouper par question : chaque groupe commence par l'option "Jamais"
   const groups = [];
   let current = [];
   for (const box of allBoxes) {
@@ -96,8 +87,6 @@ function parseDebqDocx(xml) {
     }
   }
   if (current.length > 0) groups.push(current);
-
-  // Pour chaque groupe, trouver la case cochée (☒)
   return groups.map(grp => {
     const checked = grp.find(b => b.mark === "☒");
     if (!checked) return { v: null, c: 0 };
@@ -112,6 +101,15 @@ function parseDebqDocx(xml) {
     else                                     v = null;
     return { v, c: v !== null ? 1 : 0 };
   });
+}
+
+/* Parse un DOCX DEBQ : extrait le texte des balises <w:t> puis parse */
+function parseDebqDocx(xml) {
+  const textBlocks = [];
+  const tagRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = tagRe.exec(xml)) !== null) textBlocks.push(m[1]);
+  return parseDebqText(textBlocks.join(" "));
 }
 
 const PROMPTS = {
@@ -261,7 +259,7 @@ export default function ScorAlim() {
               fullText += tc.items.map(i => i.str).join(" ") + " ";
             }
             if (fullText.includes("☒")) {
-              const items = parseDebqDocx(fullText);
+              const items = parseDebqText(fullText);
               while (items.length < 33) items.push({ v: null, c: 0 });
               const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
               setExtracted(normalized);
