@@ -112,6 +112,44 @@ function parseDebqDocx(xml) {
   return parseDebqText(textBlocks.join(" "));
 }
 
+/* Parse le texte BES (cases ☒/☐, options numérotées 1- à 4-) */
+function parseBesText(text) {
+  const allBoxes = [];
+  const boxRe = /([☒☐])\s*([^☒☐]{1,150})/g;
+  let m;
+  while ((m = boxRe.exec(text)) !== null) {
+    allBoxes.push({ mark: m[1], label: m[2].trim() });
+  }
+  // Grouper par question : chaque groupe commence par l'option "1-"
+  const groups = [];
+  let current = [];
+  for (const box of allBoxes) {
+    if (/^1[\-\s]/.test(box.label) && current.length > 0) {
+      groups.push(current);
+      current = [box];
+    } else {
+      current.push(box);
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups.map(grp => {
+    const checked = grp.find(b => b.mark === "☒");
+    if (!checked) return { v: null, c: 0 };
+    const numMatch = checked.label.match(/^(\d)/);
+    const v = numMatch ? parseInt(numMatch[1]) - 1 : null; // 0-based index pour calcScores
+    return { v, c: v !== null ? 1 : 0 };
+  });
+}
+
+/* Parse un DOCX BES : extrait le texte des balises <w:t> puis parse */
+function parseBesDocx(xml) {
+  const textBlocks = [];
+  const tagRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = tagRe.exec(xml)) !== null) textBlocks.push(m[1]);
+  return parseBesText(textBlocks.join(" "));
+}
+
 const PROMPTS = {
   DEBQ: `Analyse ce questionnaire DEBQ (33 items).
 Mise en page : chaque item présente ses options sur une ligne horizontale :
@@ -249,7 +287,7 @@ export default function ScorAlim() {
 
       if (first.type === "pdf") {
         // Tenter d'abord un parsing texte (PDF numérique avec ☒)
-        if (q === "DEBQ") {
+        if (q === "DEBQ" || q === "BES") {
           try {
             const pdfDoc = await pdfjsLib.getDocument({ data: first.arrayBuffer.slice(0) }).promise;
             let fullText = "";
@@ -259,12 +297,17 @@ export default function ScorAlim() {
               fullText += tc.items.map(i => i.str).join(" ") + " ";
             }
             if (fullText.includes("☒")) {
-              const items = parseDebqText(fullText);
-              while (items.length < 33) items.push({ v: null, c: 0 });
-              const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
-              setExtracted(normalized);
-              setStep("review");
-              return;
+              if (q === "DEBQ") {
+                const items = parseDebqText(fullText);
+                while (items.length < 33) items.push({ v: null, c: 0 });
+                const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+                setExtracted(normalized); setStep("review"); return;
+              } else if (q === "BES") {
+                const items = parseBesText(fullText);
+                while (items.length < 16) items.push({ v: null, c: 0 });
+                const normalized = items.slice(0, 16).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+                setExtracted(normalized); setStep("review"); return;
+              }
             }
           } catch(e) { /* PDF non textuel → fallback vision */ }
         }
@@ -274,17 +317,21 @@ export default function ScorAlim() {
           { type:"text", text:prompt }
         ];
       } else if (first.type === "docx") {
-        // DOCX numérique DEBQ : lecture XML directe via JSZip
-        if (q === "DEBQ") {
+        // DOCX numérique DEBQ ou BES : lecture XML directe via JSZip
+        if (q === "DEBQ" || q === "BES") {
           const zip = await JSZip.loadAsync(first.arrayBuffer);
           const xmlRaw = await zip.file("word/document.xml").async("string");
-          const items = parseDebqDocx(xmlRaw);
-          // Compléter jusqu'à 33 items si des réponses manquent — la review step gérera les null (orange)
-          while (items.length < 33) items.push({ v: null, c: 0 });
-          const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
-          setExtracted(normalized);
-          setStep("review");
-          return;
+          if (q === "DEBQ") {
+            const items = parseDebqDocx(xmlRaw);
+            while (items.length < 33) items.push({ v: null, c: 0 });
+            const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+            setExtracted(normalized); setStep("review"); return;
+          } else {
+            const items = parseBesDocx(xmlRaw);
+            while (items.length < 16) items.push({ v: null, c: 0 });
+            const normalized = items.slice(0, 16).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+            setExtracted(normalized); setStep("review"); return;
+          }
         }
         // Autres questionnaires en DOCX : fallback mammoth
         const res = await mammoth.extractRawText({ arrayBuffer: first.arrayBuffer });
