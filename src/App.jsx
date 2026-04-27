@@ -150,6 +150,50 @@ function parseBesDocx(xml) {
   return parseBesText(textBlocks.join(" "));
 }
 
+/* Parse le texte IES-2 (cases ☒/☐, options Pas du tout d'accord → Tout à fait d'accord) */
+function parseIesText(text) {
+  const IES_LABELS = [
+    "Pas du tout d\u2019accord",
+    "Plut\u00f4t pas d\u2019accord",
+    "Ni d\u2019accord, ni pas d\u2019accord",
+    "Plut\u00f4t d\u2019accord",
+    "Tout \u00e0 fait d\u2019accord"
+  ];
+  const allBoxes = [];
+  const boxRe = /([☒☐])\s*([^☒☐]{1,150})/g;
+  let m;
+  while ((m = boxRe.exec(text)) !== null) {
+    allBoxes.push({ mark: m[1], label: m[2].trim() });
+  }
+  // Grouper par question : chaque groupe commence par "Pas du tout"
+  const groups = [];
+  let current = [];
+  for (const box of allBoxes) {
+    if (box.label.startsWith("Pas du tout") && current.length > 0) {
+      groups.push(current);
+      current = [box];
+    } else {
+      current.push(box);
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups.map(grp => {
+    const checked = grp.find(b => b.mark === "☒");
+    if (!checked) return { v: null, c: 0 };
+    const v = IES_LABELS.findIndex(l => checked.label.startsWith(l));
+    return { v: v >= 0 ? v + 1 : null, c: v >= 0 ? 1 : 0 };
+  });
+}
+
+/* Parse un DOCX IES-2 : extrait le texte des balises <w:t> puis parse */
+function parseIesDocx(xml) {
+  const textBlocks = [];
+  const tagRe = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = tagRe.exec(xml)) !== null) textBlocks.push(m[1]);
+  return parseIesText(textBlocks.join(" "));
+}
+
 const PROMPTS = {
   DEBQ: `Analyse ce questionnaire DEBQ (33 items).
 Mise en page : chaque item présente ses options sur une ligne horizontale :
@@ -287,7 +331,7 @@ export default function ScorAlim() {
 
       if (first.type === "pdf") {
         // Tenter d'abord un parsing texte (PDF numérique avec ☒)
-        if (q === "DEBQ" || q === "BES") {
+        if (q === "DEBQ" || q === "BES" || q === "IES2") {
           try {
             const pdfDoc = await pdfjsLib.getDocument({ data: first.arrayBuffer.slice(0) }).promise;
             let fullText = "";
@@ -307,6 +351,11 @@ export default function ScorAlim() {
                 while (items.length < 16) items.push({ v: null, c: 0 });
                 const normalized = items.slice(0, 16).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
                 setExtracted(normalized); setStep("review"); return;
+              } else if (q === "IES2") {
+                const items = parseIesText(fullText);
+                while (items.length < 18) items.push({ v: null, c: 0 });
+                const normalized = items.slice(0, 18).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+                setExtracted(normalized); setStep("review"); return;
               }
             }
           } catch(e) { /* PDF non textuel → fallback vision */ }
@@ -318,7 +367,7 @@ export default function ScorAlim() {
         ];
       } else if (first.type === "docx") {
         // DOCX numérique DEBQ ou BES : lecture XML directe via JSZip
-        if (q === "DEBQ" || q === "BES") {
+        if (q === "DEBQ" || q === "BES" || q === "IES2") {
           const zip = await JSZip.loadAsync(first.arrayBuffer);
           const xmlRaw = await zip.file("word/document.xml").async("string");
           if (q === "DEBQ") {
@@ -326,10 +375,15 @@ export default function ScorAlim() {
             while (items.length < 33) items.push({ v: null, c: 0 });
             const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
             setExtracted(normalized); setStep("review"); return;
-          } else {
+          } else if (q === "BES") {
             const items = parseBesDocx(xmlRaw);
             while (items.length < 16) items.push({ v: null, c: 0 });
             const normalized = items.slice(0, 16).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+            setExtracted(normalized); setStep("review"); return;
+          } else {
+            const items = parseIesDocx(xmlRaw);
+            while (items.length < 18) items.push({ v: null, c: 0 });
+            const normalized = items.slice(0, 18).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
             setExtracted(normalized); setStep("review"); return;
           }
         }
