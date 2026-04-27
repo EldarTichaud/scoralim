@@ -2,6 +2,8 @@ import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import * as mammoth from "mammoth";
 import JSZip from "jszip";
+import * as pdfjsLib from "pdfjs-dist";
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const CONFIGS = {
@@ -221,9 +223,10 @@ export default function ScorAlim() {
         const compressed = await compressImage(b64full);
         setFileList(prev => [...prev, { type:"image", data:compressed, mediaType:"image/jpeg", name:file.name }]);
       } else if (ext==="pdf" || file.type?.includes("pdf")) {
-        const b64 = await toB64(file);
+        const buf = await file.arrayBuffer();
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
         // PDF replaces everything (auto-paginated)
-        setFileList([{ type:"pdf", data:b64.split(",")[1], name:file.name }]);
+        setFileList([{ type:"pdf", data:b64, arrayBuffer:buf, name:file.name }]);
       } else if (ext==="docx") {
         const buf = await file.arrayBuffer();
         setFileList([{ type:"docx", arrayBuffer:buf, name:file.name }]);
@@ -243,6 +246,27 @@ export default function ScorAlim() {
       const first = fileList[0];
 
       if (first.type === "pdf") {
+        // Tenter d'abord un parsing texte (PDF numérique avec ☒)
+        if (q === "DEBQ") {
+          try {
+            const pdfDoc = await pdfjsLib.getDocument({ data: first.arrayBuffer.slice(0) }).promise;
+            let fullText = "";
+            for (let p = 1; p <= pdfDoc.numPages; p++) {
+              const page = await pdfDoc.getPage(p);
+              const tc = await page.getTextContent();
+              fullText += tc.items.map(i => i.str).join(" ") + " ";
+            }
+            if (fullText.includes("☒")) {
+              const items = parseDebqDocx(fullText);
+              while (items.length < 33) items.push({ v: null, c: 0 });
+              const normalized = items.slice(0, 33).map(item => ({ v: item.v ?? null, c: item.c ?? 1 }));
+              setExtracted(normalized);
+              setStep("review");
+              return;
+            }
+          } catch(e) { /* PDF non textuel → fallback vision */ }
+        }
+        // Fallback vision (PDF scanné ou autre questionnaire)
         content = [
           { type:"document", source:{ type:"base64", media_type:"application/pdf", data:first.data } },
           { type:"text", text:prompt }
