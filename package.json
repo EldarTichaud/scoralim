@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "mammoth": "^1.7.2",
     "pdfjs-dist": "^5.7.284",
     "react": "^18.3.1",

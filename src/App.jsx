@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import * as mammoth from "mammoth";
 import JSZip from "jszip";
 import * as pdfjsLib from "pdfjs-dist";
+import { jsPDF } from "jspdf";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
@@ -160,19 +161,17 @@ function calcScores(q, items) {
   const subs = {};
   cfg.subscales.forEach(s => {
     const vals = s.items.map(n => proc[n-1]).filter(v => v != null);
-    subs[s.key] = vals.length ? +(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2) : null;
+    subs[s.key] = vals.length ? Math.ceil(vals.reduce((a,b)=>a+b,0)/vals.length * 10) / 10 : null;
   });
   const allVals = Object.values(subs).filter(v => v != null);
-  const total = allVals.length ? +(allVals.reduce((a,b)=>a+b,0)/allVals.length).toFixed(2) : null;
+  const total = allVals.length ? Math.ceil(allVals.reduce((a,b)=>a+b,0)/allVals.length * 10) / 10 : null;
   return { type:q, subscales:subs, total, nullCount: items.filter(v=>v==null).length };
 }
 
 function barColor(q, key, val) {
   if (val == null) return "#cbd5e1";
   if (q === "DEBQ") {
-    const n = CONFIGS.DEBQ.norms[key];
-    if (!n) return "#6366f1";
-    return val >= n.high ? "#dc2626" : val < n.low ? "#2563eb" : "#d97706";
+    return val > 3 ? "#dc2626" : "#2563eb"; // Positif / Négatif
   }
   return val >= 3.5 ? "#16a34a" : val >= 2.5 ? "#d97706" : "#dc2626";
 }
@@ -710,8 +709,7 @@ export default function ScorAlim() {
                       const pct = val ? Math.max(0, Math.min(((val-1)/4)*100, 100)) : 0;
                       let interp = "";
                       if (q==="DEBQ") {
-                        const n = CONFIGS.DEBQ.norms[s.key];
-                        interp = val >= n.high ? "Positif" : val < n.low ? "Faible" : "Modéré";
+                        interp = val > 3 ? "Positif" : "Négatif";
                       } else {
                         interp = val >= 3.5 ? "Élevé" : val >= 2.5 ? "Modéré" : "Faible";
                       }
@@ -720,7 +718,7 @@ export default function ScorAlim() {
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
                             <span style={{fontSize:13,fontWeight:500,color:"#374151"}}>{s.label}</span>
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <span className="mono" style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{val?.toFixed(2)??"—"}</span>
+                              <span className="mono" style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{val?.toFixed(1)??"—"}</span>
                               <span style={{fontSize:11,padding:"2px 8px",borderRadius:20,background:color,color:"white",fontWeight:600}}>{interp}</span>
                             </div>
                           </div>
@@ -733,7 +731,7 @@ export default function ScorAlim() {
                     {scores.total != null && (
                       <div style={{paddingTop:10,borderTop:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",fontSize:13}}>
                         <span style={{color:"#64748b"}}>Score global moyen</span>
-                        <span className="mono" style={{fontWeight:700,color:"#1e293b"}}>{scores.total} / 5</span>
+                        <span className="mono" style={{fontWeight:700,color:"#1e293b"}}>{scores.total?.toFixed(1) ?? "—"} / 5</span>
                       </div>
                     )}
                   </div>
@@ -762,7 +760,7 @@ export default function ScorAlim() {
                     {q==="IES2" ? (
                       <><span>🟢 Élevé ≥3.5</span><span>🟡 Modéré 2.5–3.5</span><span>🔴 Faible &lt;2.5</span></>
                     ) : (
-                      <><span>🔴 Élevé</span><span>🟡 Modéré</span><span>🔵 Faible</span></>
+                      <><span>🔴 Positif &gt;3</span><span>🔵 Négatif ≤3</span></>
                     )}
                   </div>
                 </div>
@@ -784,9 +782,61 @@ export default function ScorAlim() {
                   style={{flex:1,padding:"13px",borderRadius:12,border:"1.5px solid #e2e8f0",background:"white",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer"}}>
                   ↺ Nouvel import
                 </button>
-                <button onClick={()=>window.print()}
+                <button onClick={()=>{
+                    const doc = new jsPDF({ unit:"pt", format:"a4" });
+                    const ref  = patient.ref  || "Sans référence";
+                    const date = patient.date || "";
+                    const qName = cfg.fullName;
+                    let y = 50;
+                    const W = 595;
+                    const M = 50;
+                    // En-tête
+                    doc.setFontSize(18).setFont(undefined,"bold").setTextColor(30,41,59);
+                    doc.text("Scor’Alim — " + qName, M, y); y += 22;
+                    doc.setFontSize(11).setFont(undefined,"normal").setTextColor(100,116,139);
+                    doc.text(date, M, y); y += 30;
+                    doc.setDrawColor(226,232,240).setLineWidth(0.5).line(M, y, W-M, y); y += 20;
+                    // Sous-scores DEBQ / IES2
+                    if (q==="DEBQ"||q==="IES2") {
+                      cfg.subscales.forEach(s => {
+                        const val = scores.subscales[s.key];
+                        const lbl = q==="DEBQ" ? (val>3?"Positif":"Négatif") : (val>=3.5?"Élevé":val>=2.5?"Modéré":"Faible");
+                        const [r,g,b] = q==="DEBQ" ? (val>3?[220,38,38]:[37,99,235]) : (val>=3.5?[22,163,74]:val>=2.5?[217,119,6]:[220,38,38]);
+                        doc.setFontSize(12).setFont(undefined,"normal").setTextColor(55,65,81);
+                        doc.text(s.label, M, y);
+                        doc.setFont(undefined,"bold").setTextColor(30,41,59);
+                        doc.text((val?.toFixed(1)??"—"), W-M-120, y);
+                        doc.setFillColor(r,g,b).setTextColor(255,255,255).setFontSize(10);
+                        doc.roundedRect(W-M-80, y-12, 70, 16, 8, 8, "F");
+                        doc.text(lbl, W-M-45, y, {align:"center"});
+                        y += 24;
+                      });
+                      y += 6;
+                      doc.setDrawColor(241,245,249).line(M, y, W-M, y); y += 16;
+                      doc.setFontSize(12).setFont(undefined,"normal").setTextColor(100,116,139);
+                      doc.text("Score global moyen", M, y);
+                      doc.setFont(undefined,"bold").setTextColor(30,41,59);
+                      doc.text((scores.total?.toFixed(1)??"—") + " / 5", W-M, y, {align:"right"});
+                      y += 30;
+                    }
+                    // BES
+                    if (q==="BES") {
+                      doc.setFontSize(28).setFont(undefined,"bold").setTextColor(scores.severity.color.replace("#","") ? 30 : 30,41,59);
+                      doc.text(String(scores.total), W/2, y+10, {align:"center"}); y += 40;
+                      doc.setFontSize(14).setFont(undefined,"bold").setTextColor(100,116,139);
+                      doc.text(scores.severity.label, W/2, y, {align:"center"}); y += 30;
+                    }
+                    // Note clinique
+                    doc.setFontSize(10).setFont(undefined,"normal").setTextColor(100,116,139);
+                    const note = "Note clinique : Scores calculés par extraction automatique. Normes indicatives. Réf. : " + cfg.ref + ".";
+                    doc.text(note, M, y, {maxWidth: W-2*M}); y += 30;
+                    // Footer
+                    doc.setFontSize(9).setTextColor(148,163,184);
+                    doc.text("Scor’Alim · Romain Lecomte, diététicien-nutritionniste · scoralim.vercel.app", W/2, 820, {align:"center"});
+                    doc.save("ScorAlim_" + q + "_" + (ref||"dossier") + ".pdf");
+                  }}
                   style={{flex:1,padding:"13px",borderRadius:12,border:"none",background:cfg.color,color:"white",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  🖨️ Exporter PDF
+                  ⬇️ Exporter PDF
                 </button>
               </div>
               <button onClick={reset} className="no-print"
