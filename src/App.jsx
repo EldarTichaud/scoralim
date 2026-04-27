@@ -223,7 +223,12 @@ export default function ScorAlim() {
         setFileList(prev => [...prev, { type:"image", data:compressed, mediaType:"image/jpeg", name:file.name }]);
       } else if (ext==="pdf" || file.type?.includes("pdf")) {
         const buf = await file.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const bytes = new Uint8Array(buf);
+        let b64 = "";
+        for (let i = 0; i < bytes.length; i += 8192) {
+          b64 += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        }
+        b64 = btoa(b64);
         // PDF replaces everything (auto-paginated)
         setFileList([{ type:"pdf", data:b64, arrayBuffer:buf, name:file.name }]);
       } else if (ext==="docx") {
