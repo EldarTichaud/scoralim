@@ -214,11 +214,12 @@ Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 "v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
   BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 items).
-Chaque item présente 3 ou 4 propositions. Le patient en coche/entoure une seule.
-Pour chaque item de 1 à 16, indique l'index de la proposition choisie ET ta confiance.
+Mise en page : les items sont numérotés en chiffres romains (I à XVI). Chaque item contient 3 ou 4 propositions numérotées 1-, 2-, 3-, (4-). Le patient coche ou entoure le chiffre correspondant à la proposition choisie — inspecte attentivement lequel est coché/entouré parmi 1, 2, 3, 4.
+Les propositions ont un texte long qui peut déborder sur plusieurs lignes : la proposition suivante commence toujours par son numéro (2-, 3-, 4-).
+Pour chaque item de 1 à 16 (I=1, II=2... XVI=16), indique l'index 0-basé de la proposition cochée ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":0,"c":1},{"v":2,"c":0},...]}
-"v" = index choisi (0=1ère proposition, 1=2ème, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`
+"v" = index 0-basé (0=proposition 1, 1=proposition 2, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`
 };
 
 /* ─── SCORING ────────────────────────────────────────────────── */
