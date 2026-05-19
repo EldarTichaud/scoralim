@@ -213,10 +213,10 @@ Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
 "v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
-  BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 items).
-Mise en page : chaque item présente 3 ou 4 propositions numérotées 1-, 2-, 3-, (4-). Le patient coche une case ☒ à gauche de la proposition choisie — les cases non cochées sont ☐. Inspecte attentivement l'intérieur de chaque case pour déterminer laquelle est ☒.
-Les propositions ont un texte long qui peut déborder sur plusieurs lignes : la suivante commence toujours par son numéro (2-, 3-, 4-).
-Pour chaque item de 1 à 16, indique l'index de la proposition cochée (0=1ère, 1=2ème, 2=3ème, 3=4ème) ET ta confiance.
+  BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 paragraphes).
+Mise en page : chaque paragraphe présente 3 ou 4 propositions numérotées 1-, 2-, 3-, (4-). Le patient coche une case ☒ à gauche de la proposition choisie — les cases non cochées sont ☐. Inspecte attentivement l'intérieur de chaque case pour déterminer laquelle est ☒.
+Les propositions ont un texte long qui peut déborder sur plusieurs lignes : la suivante commence toujours par son numéro (2-, 3-, 4-). Les paragraphes sont séparés par une ligne vide.
+Pour chaque paragraphe de 1 à 16, indique l'index de la proposition cochée (0=1ère, 1=2ème, 2=3ème, 3=4ème) ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":0,"c":1},{"v":2,"c":0},...]}
 "v" = index (0, 1, 2 ou 3), ou null si aucune case cochée détectée. "c" = confiance : 1=certain, 0=incertain.`
