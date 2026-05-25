@@ -405,15 +405,25 @@ export default function ScorAlim() {
         ];
       }
 
+      // BES photo → Opus + extended thinking pour meilleure précision
+      const useThinking = q === "BES" && first.type !== "docx" && first.type !== "pdf";
+      const apiBody = useThinking
+        ? { model:"claude-opus-4-6", max_tokens:16000,
+            thinking:{ type:"enabled", budget_tokens:10000 },
+            messages:[{role:"user",content}] }
+        : { model:"claude-sonnet-4-20250514", max_tokens:1000,
+            messages:[{role:"user",content}] };
+
       const res = await fetch("/api/analyze", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content}] })
+        body: JSON.stringify(apiBody)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || "Erreur API");
 
-      const text = data.content.map(c=>c.text||"").join("");
+      // Filtrer les blocs thinking, garder uniquement le texte
+      const text = (data.content||[]).filter(c=>c.type==="text").map(c=>c.text||"").join("");
       const m = text.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("JSON introuvable dans la réponse");
       const parsed = JSON.parse(m[0]);

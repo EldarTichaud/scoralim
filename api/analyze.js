@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // CORS - accept only same origin
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -17,6 +16,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "interleaved-thinking-2025-05-14",
       },
       body: JSON.stringify(req.body),
     });
