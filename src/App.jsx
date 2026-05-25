@@ -701,9 +701,10 @@ export default function ScorAlim() {
                     </div>
                   )}
                   {/* Légende */}
-                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b"}}>
+                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b",flexWrap:"wrap"}}>
                     <span>🔴 Réponse manquante</span>
                     <span>🟠 Lecture incertaine</span>
+                    {(CONFIGS[q]?.reverseItems||[]).length > 0 && <span>↔ Item inversé (→ score calculé)</span>}
                   </div>
                 </div>
 
@@ -720,6 +721,10 @@ export default function ScorAlim() {
                       const bgColor     = isMissing ? "#fef2f2" : isUncertain ? "#fff7ed" : "#fafafa";
                       const textColor   = isMissing ? "#dc2626" : isUncertain ? "#ea580c" : "#1e293b";
                       const icon        = isMissing ? "🔴" : isUncertain ? "🟠" : "";
+                      // Items inversés IES-2 : afficher la valeur calculée (6-v)
+                      const revItems = (CONFIGS[q]?.reverseItems || []);
+                      const isReversed = revItems.includes(idx + 1);
+                      const calcVal = (isReversed && item.v !== null) ? 6 - item.v : null;
                       const options = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
                         : q === "DEBQ" ? [0,1,2,3,4,5] : [1,2,3,4,5];
@@ -732,7 +737,7 @@ export default function ScorAlim() {
                           display: "flex", flexDirection: "column", alignItems: "center", gap: 3
                         }}>
                           <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
-                            {icon} Q{idx+1}
+                            {icon} Q{idx+1}{isReversed ? " ↔" : ""}
                           </span>
                           <select
                             value={item.v ?? ""}
@@ -749,6 +754,9 @@ export default function ScorAlim() {
                               <option key={o} value={o}>{isBES ? `P${o+1}` : o}</option>
                             ))}
                           </select>
+                          {calcVal !== null && (
+                            <span style={{fontSize:9,color:"#6366f1",fontWeight:600}}>→ {calcVal}</span>
+                          )}
                         </div>
                       );
                     })}
