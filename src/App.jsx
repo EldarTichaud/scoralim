@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 import * as mammoth from "mammoth";
 import JSZip from "jszip";
@@ -213,13 +214,12 @@ Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
 "v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
-  BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 paragraphes).
-Mise en page : chaque paragraphe présente 3 ou 4 propositions numérotées 1-, 2-, 3-, (4-). Le patient coche une case ☒ à gauche de la proposition choisie — les cases non cochées sont ☐. Inspecte attentivement l'intérieur de chaque case pour déterminer laquelle est ☒.
-Les propositions ont un texte long qui peut déborder sur plusieurs lignes : la suivante commence toujours par son numéro (2-, 3-, 4-). Les paragraphes sont séparés par une ligne vide.
-Pour chaque paragraphe de 1 à 16, indique l'index de la proposition cochée (0=1ère, 1=2ème, 2=3ème, 3=4ème) ET ta confiance.
+  BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 items).
+Chaque item présente 3 ou 4 propositions. Le patient en coche/entoure une seule.
+Pour chaque item de 1 à 16, indique l'index de la proposition choisie ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":0,"c":1},{"v":2,"c":0},...]}
-"v" = index (0, 1, 2 ou 3), ou null si aucune case cochée détectée. "c" = confiance : 1=certain, 0=incertain.`
+"v" = index choisi (0=1ère proposition, 1=2ème, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`
 };
 
 /* ─── SCORING ────────────────────────────────────────────────── */
@@ -259,13 +259,75 @@ function barColor(q, key, val) {
 
 /* ─── MAIN APP ───────────────────────────────────────────────── */
 export default function ScorAlim() {
-  const [step, setStep]               = useState("select"); // select | upload | processing | review | results
+  const [step, setStep]               = useState("select"); // select | upload | processing | review | results | history
   const [q, setQ]                     = useState(null);
   const [fileList, setFileList]       = useState([]);
   const [extractedItems, setExtracted]= useState(null); // [{v, c}]
   const [scores, setScores]           = useState(null);
   const [error, setError]             = useState(null);
-  const [patient, setPatient]         = useState({ name:"", date: new Date().toLocaleDateString("fr-FR") });
+  const [patient, setPatient]         = useState({ nom:"", prenom:"", date: new Date().toISOString().slice(0,10) });
+
+  // Auth
+  const [user, setUser]               = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode]       = useState("login"); // login | register
+  const [authEmail, setAuthEmail]     = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError]     = useState(null);
+  const [authBusy, setAuthBusy]       = useState(false);
+
+  // Historique
+  const [history, setHistory]         = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const buildRef = () => {
+    const n = (patient.nom.slice(0,3) + patient.prenom.slice(0,3)).toUpperCase();
+    const d = patient.date.replace(/-/g, "");
+    return n + d; // ex: LECROM20260527
+  };
+
+  const handleAuth = async () => {
+    setAuthBusy(true); setAuthError(null);
+    const fn = authMode === "login"
+      ? supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
+      : supabase.auth.signUp({ email: authEmail, password: authPassword });
+    const { error } = await fn;
+    if (error) setAuthError(error.message);
+    setAuthBusy(false);
+  };
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    const { data } = await supabase
+      .from("analyses")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setHistory(data || []);
+    setHistoryLoading(false);
+  };
+
+  const saveAnalysis = async (scoresData) => {
+    if (!user) return;
+    await supabase.from("analyses").insert({
+      user_id: user.id,
+      reference: buildRef(),
+      questionnaire: q,
+      scores: scoresData,
+      date_analyse: patient.date,
+    });
+  };
 
   /* File reading */
   const toB64 = f => new Promise((res,rej) => {
@@ -405,25 +467,15 @@ export default function ScorAlim() {
         ];
       }
 
-      // BES photo → Opus + extended thinking pour meilleure précision
-      const useThinking = q === "BES" && first.type !== "docx" && first.type !== "pdf";
-      const apiBody = useThinking
-        ? { model:"claude-opus-4-6", max_tokens:16000,
-            thinking:{ type:"enabled", budget_tokens:10000 },
-            messages:[{role:"user",content}] }
-        : { model:"claude-sonnet-4-20250514", max_tokens:1000,
-            messages:[{role:"user",content}] };
-
       const res = await fetch("/api/analyze", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(apiBody)
+        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content}] })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || "Erreur API");
 
-      // Filtrer les blocs thinking, garder uniquement le texte
-      const text = (data.content||[]).filter(c=>c.type==="text").map(c=>c.text||"").join("");
+      const text = data.content.map(c=>c.text||"").join("");
       const m = text.match(/\{[\s\S]*\}/);
       if (!m) throw new Error("JSON introuvable dans la réponse");
       const parsed = JSON.parse(m[0]);
@@ -445,8 +497,10 @@ export default function ScorAlim() {
   };
 
   const confirmItems = (items) => {
-    setScores(calcScores(q, items.map(i => i.v)));
+    const s = calcScores(q, items.map(i => i.v));
+    setScores(s);
     setStep("results");
+    saveAnalysis(s);
   };
 
   const reset = () => { setStep("select"); setQ(null); setFileList([]); setExtracted(null); setScores(null); setError(null); };
@@ -462,6 +516,43 @@ export default function ScorAlim() {
   };
 
   /* ─── RENDER ─────────────────────────────────────────────── */
+  // Chargement auth
+  if (authLoading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"DM Sans"}}>Chargement…</div>;
+
+  // Écran de connexion
+  if (!user) return (
+    <div style={{minHeight:"100vh",background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"DM Sans",padding:16}}>
+      <div style={{background:"white",borderRadius:20,padding:32,width:"100%",maxWidth:380,boxShadow:"0 4px 24px rgba(0,0,0,0.08)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:24}}>
+          <div style={{background:"#4f46e5",borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{color:"white",fontSize:18}}>ψ</span>
+          </div>
+          <span style={{fontSize:20,fontWeight:800,color:"#1e293b"}}>Scor<span style={{color:"#818cf8"}}>&#x2019;</span>Alim</span>
+        </div>
+        <h2 style={{fontSize:16,fontWeight:700,color:"#1e293b",marginBottom:20}}>
+          {authMode === "login" ? "Connexion" : "Créer un compte"}
+        </h2>
+        <input type="email" placeholder="Email" value={authEmail}
+          onChange={e => setAuthEmail(e.target.value)}
+          style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid #e2e8f0",marginBottom:10,fontSize:14,boxSizing:"border-box"}} />
+        <input type="password" placeholder="Mot de passe" value={authPassword}
+          onChange={e => setAuthPassword(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleAuth()}
+          style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid #e2e8f0",marginBottom:16,fontSize:14,boxSizing:"border-box"}} />
+        {authError && <div style={{color:"#dc2626",fontSize:12,marginBottom:12}}>{authError}</div>}
+        <button onClick={handleAuth} disabled={authBusy}
+          style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:"#4f46e5",color:"white",fontWeight:700,fontSize:14,cursor:"pointer",opacity:authBusy?0.6:1}}>
+          {authBusy ? "…" : authMode === "login" ? "Se connecter" : "Créer le compte"}
+        </button>
+        {authMode === "register" && <p style={{fontSize:11,color:"#94a3b8",marginTop:10,textAlign:"center"}}>Un email de confirmation vous sera envoyé.</p>}
+        <button onClick={() => { setAuthMode(m => m === "login" ? "register" : "login"); setAuthError(null); }}
+          style={{width:"100%",marginTop:12,padding:"8px",borderRadius:10,border:"1px solid #e2e8f0",background:"transparent",fontSize:13,color:"#6366f1",cursor:"pointer"}}>
+          {authMode === "login" ? "Créer un compte" : "Déjà un compte ? Se connecter"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <style>{`
@@ -516,21 +607,64 @@ export default function ScorAlim() {
               <div style={{fontSize:11,color:"#64748b",letterSpacing:"0.05em", marginTop:2}}>DEBQ · IES-2 · BES · ANALYSE AUTOMATIQUE</div>
             </div>
 
-            {step !== "select" && (
-              <button onClick={reset} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>← Menu</button>
-            )}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {step !== "select" && (
+                <button onClick={reset} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>← Menu</button>
+              )}
+              <button onClick={()=>{loadHistory();setStep("history");}} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>📋</button>
+              <button onClick={()=>supabase.auth.signOut()} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>Déco</button>
+            </div>
           </div>
         </div>
 
         {/* Print header */}
         <div className="print-header" style={{maxWidth:560,margin:"0 auto",padding:"20px 20px 0",display:"none"}}>
           <h1 style={{fontSize:20,fontWeight:700,margin:0}}>Scor'Alim — {cfg?.fullName}</h1>
-          {patient.name && <p style={{margin:"4px 0 0",color:"#475569"}}>{patient.name}</p>}
+          {buildRef() && <p style={{margin:"4px 0 0",color:"#475569"}}>{buildRef()}</p>}
           <p style={{margin:"2px 0 12px",color:"#94a3b8",fontSize:13}}>{patient.date}</p>
           <hr style={{borderColor:"#e2e8f0"}}/>
         </div>
 
         <div style={{maxWidth:560, margin:"0 auto", padding:"20px 16px", display:"flex", flexDirection:"column", gap:14}}>
+
+          {/* ══ HISTORIQUE ══ */}
+          {step === "history" && (
+            <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <p style={{fontSize:12,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:0}}>Historique des analyses</p>
+                <button onClick={reset} style={{fontSize:12,color:"#6366f1",border:"none",background:"none",cursor:"pointer"}}>← Retour</button>
+              </div>
+              {historyLoading ? (
+                <p style={{color:"#94a3b8",fontSize:13}}>Chargement…</p>
+              ) : history.length === 0 ? (
+                <p style={{color:"#94a3b8",fontSize:13}}>Aucune analyse enregistrée.</p>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {history.map(h => {
+                    const s = h.scores || {};
+                    const cfg2 = CONFIGS[h.questionnaire];
+                    return (
+                      <div key={h.id} style={{background:"white",borderRadius:14,padding:14,border:"1px solid #f1f5f9"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span className="mono" style={{padding:"2px 8px",borderRadius:20,background:cfg2?.color||"#6366f1",color:"white",fontSize:10,fontWeight:700}}>{h.questionnaire}</span>
+                            <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#1e293b"}}>{h.reference}</span>
+                          </div>
+                          <span style={{fontSize:11,color:"#94a3b8"}}>{h.date_analyse}</span>
+                        </div>
+                        {h.questionnaire !== "BES" && s.total != null && (
+                          <div style={{fontSize:13,color:"#475569"}}>Score global : <strong>{s.total?.toFixed(1)}</strong> / 5</div>
+                        )}
+                        {h.questionnaire === "BES" && s.total != null && (
+                          <div style={{fontSize:13,color:"#475569"}}>Score : <strong>{s.total}</strong> — {s.severity?.label}</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ══ STEP 1 — SELECT ══ */}
           {step === "select" && (
@@ -567,18 +701,27 @@ export default function ScorAlim() {
               <div style={{background:"white",borderRadius:16,padding:16,border:"1px solid #f1f5f9"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:10}}>
                   <p style={{fontSize:11,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:0}}>Référence dossier</p>
-                  <span style={{fontSize:10,color:"#94a3b8"}}>⚠️ N'utilisez pas le nom du patient</span>
+                  <span style={{fontSize:10,color:"#94a3b8"}}>🔒 3 lettres nom + 3 lettres prénom</span>
                 </div>
-                <div style={{display:"flex",gap:8}}>
-                  <input type="text" placeholder="Code / initiales / numéro dossier" value={patient.name}
-                    onChange={e=>setPatient(p=>({...p,name:e.target.value}))}
-                    style={{flex:1,border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"}}
+                <div style={{display:"flex",gap:8,marginBottom:8}}>
+                  <input type="text" placeholder="NOM" maxLength={3} value={patient.nom}
+                    onChange={e=>setPatient(p=>({...p,nom:e.target.value.toUpperCase().replace(/[^A-Z]/g,"")}))}
+                    style={{flex:1,border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em"}}
                     onFocus={e=>e.target.style.borderColor="#6366f1"} onBlur={e=>e.target.style.borderColor="#e2e8f0"}/>
-                  <input type="text" placeholder="Date" value={patient.date}
+                  <input type="text" placeholder="PRÉ" maxLength={3} value={patient.prenom}
+                    onChange={e=>setPatient(p=>({...p,prenom:e.target.value.toUpperCase().replace(/[^A-Z]/g,"")}))}
+                    style={{flex:1,border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em"}}
+                    onFocus={e=>e.target.style.borderColor="#6366f1"} onBlur={e=>e.target.style.borderColor="#e2e8f0"}/>
+                  <input type="date" value={patient.date}
                     onChange={e=>setPatient(p=>({...p,date:e.target.value}))}
-                    style={{width:110,border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"}}
+                    style={{width:130,border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 12px",fontSize:13,outline:"none",fontFamily:"'DM Sans',sans-serif"}}
                     onFocus={e=>e.target.style.borderColor="#6366f1"} onBlur={e=>e.target.style.borderColor="#e2e8f0"}/>
                 </div>
+                {(patient.nom || patient.prenom) && (
+                  <div style={{fontSize:11,color:"#6366f1",fontWeight:600,fontFamily:"'DM Mono',monospace"}}>
+                    Référence : {buildRef()}
+                  </div>
+                )}
               </div>
 
               {/* File zone */}
@@ -701,10 +844,9 @@ export default function ScorAlim() {
                     </div>
                   )}
                   {/* Légende */}
-                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b"}}>
                     <span>🔴 Réponse manquante</span>
                     <span>🟠 Lecture incertaine</span>
-                    {(CONFIGS[q]?.reverseItems||[]).length > 0 && <span>↔ Item inversé (→ score calculé)</span>}
                   </div>
                 </div>
 
@@ -721,10 +863,6 @@ export default function ScorAlim() {
                       const bgColor     = isMissing ? "#fef2f2" : isUncertain ? "#fff7ed" : "#fafafa";
                       const textColor   = isMissing ? "#dc2626" : isUncertain ? "#ea580c" : "#1e293b";
                       const icon        = isMissing ? "🔴" : isUncertain ? "🟠" : "";
-                      // Items inversés IES-2 : afficher la valeur calculée (6-v)
-                      const revItems = (CONFIGS[q]?.reverseItems || []);
-                      const isReversed = revItems.includes(idx + 1);
-                      const calcVal = (isReversed && item.v !== null) ? 6 - item.v : null;
                       const options = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
                         : q === "DEBQ" ? [0,1,2,3,4,5] : [1,2,3,4,5];
@@ -737,7 +875,7 @@ export default function ScorAlim() {
                           display: "flex", flexDirection: "column", alignItems: "center", gap: 3
                         }}>
                           <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
-                            {icon} Q{idx+1}{isReversed ? " ↔" : ""}
+                            {icon} Q{idx+1}
                           </span>
                           <select
                             value={item.v ?? ""}
@@ -754,9 +892,6 @@ export default function ScorAlim() {
                               <option key={o} value={o}>{isBES ? `P${o+1}` : o}</option>
                             ))}
                           </select>
-                          {calcVal !== null && (
-                            <span style={{fontSize:9,color:"#6366f1",fontWeight:600}}>→ {calcVal}</span>
-                          )}
                         </div>
                       );
                     })}
@@ -907,7 +1042,7 @@ export default function ScorAlim() {
                 </button>
                 <button onClick={()=>{
                     const doc = new jsPDF({ unit:"pt", format:"a4" });
-                    const ref  = patient.ref  || "Sans référence";
+                    const ref  = buildRef() || "Sans référence";
                     const date = patient.date || "";
                     const qName = cfg.fullName;
                     let y = 50;
