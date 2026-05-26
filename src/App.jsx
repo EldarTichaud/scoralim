@@ -7,6 +7,10 @@ import * as pdfjsLib from "pdfjs-dist";
 import { jsPDF } from "jspdf";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
+/* ─── VERSION & CHANGELOG ────────────────────────────────────── */
+const APP_VERSION = "2.0";
+const CHANGELOG   = "v2.0 : Connexion sécurisée + historique des analyses (Supabase).";
+
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const CONFIGS = {
   DEBQ: {
@@ -267,6 +271,10 @@ export default function ScorAlim() {
   const [error, setError]             = useState(null);
   const [patient, setPatient]         = useState({ nom:"", prenom:"", date: new Date().toISOString().slice(0,10) });
 
+  // Notifications mises à jour
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [swUpdate, setSwUpdate]           = useState(false);
+
   // Auth
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -289,6 +297,30 @@ export default function ScorAlim() {
       setUser(session?.user ?? null);
     });
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Bannière changelog : s'affiche une seule fois par version
+  useEffect(() => {
+    const seen = localStorage.getItem("scoralim_version");
+    if (seen !== APP_VERSION) {
+      setShowChangelog(true);
+      localStorage.setItem("scoralim_version", APP_VERSION);
+    }
+  }, []);
+
+  // Toast PWA : détecte quand Vercel a déployé une nouvelle version
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.ready.then(reg => {
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            setSwUpdate(true);
+          }
+        });
+      });
+    }).catch(() => {});
   }, []);
 
   const buildRef = () => {
@@ -626,6 +658,28 @@ export default function ScorAlim() {
         </div>
 
         <div style={{maxWidth:560, margin:"0 auto", padding:"20px 16px", display:"flex", flexDirection:"column", gap:14}}>
+
+          {/* ── Bannière changelog ── */}
+          {showChangelog && (
+            <div className="no-print slide-up" style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>🆕</span>
+              <span style={{fontSize:13,color:"#166534",flex:1,lineHeight:1.4}}>{CHANGELOG}</span>
+              <button onClick={() => setShowChangelog(false)}
+                style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#166534",padding:"0 2px",lineHeight:1}}>×</button>
+            </div>
+          )}
+
+          {/* ── Toast PWA mise à jour disponible ── */}
+          {swUpdate && (
+            <div className="no-print slide-up" style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>🔄</span>
+              <span style={{fontSize:13,color:"#1d4ed8",flex:1,lineHeight:1.4}}>Une mise à jour est disponible.</span>
+              <button onClick={() => window.location.reload()}
+                style={{background:"#2563eb",border:"none",cursor:"pointer",fontSize:12,color:"white",padding:"6px 12px",borderRadius:8,fontWeight:700,whiteSpace:"nowrap"}}>
+                Recharger
+              </button>
+            </div>
+          )}
 
           {/* ══ HISTORIQUE ══ */}
           {step === "history" && (
