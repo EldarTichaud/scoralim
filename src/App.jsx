@@ -212,8 +212,16 @@ Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":0,"c":1},...]}
 "v" = valeur lue (entier 0-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
-  IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
-Pour chaque item de 1 à 18, indique la valeur cochée/entourée ET ta confiance dans la lecture.
+  IES2: `Analyse ce questionnaire IES-2 (18 items).
+Mise en page : chaque item présente ses 5 options sur des lignes séparées, dans cet ordre exact :
+□ Pas du tout d'accord       → valeur 1
+□ Plutôt pas d'accord        → valeur 2
+□ Ni d'accord, ni pas d'accord → valeur 3
+□ Plutôt d'accord            → valeur 4
+□ Tout à fait d'accord       → valeur 5
+Le patient coche une seule case en traçant une croix à l'intérieur (☒).
+Lis attentivement quelle case contient la croix — ne te fie pas à la proximité spatiale, inspecte l'intérieur de chaque case.
+Pour chaque item de 1 à 18, indique la valeur ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
 "v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
@@ -898,9 +906,10 @@ export default function ScorAlim() {
                     </div>
                   )}
                   {/* Légende */}
-                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b"}}>
+                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b",flexWrap:"wrap"}}>
                     <span>🔴 Réponse manquante</span>
                     <span>🟠 Lecture incertaine</span>
+                    {cfg.reverseItems?.length > 0 && <span style={{color:"#a78bfa"}}>↺ Item inversé</span>}
                   </div>
                 </div>
 
@@ -917,6 +926,7 @@ export default function ScorAlim() {
                       const bgColor     = isMissing ? "#fef2f2" : isUncertain ? "#fff7ed" : "#fafafa";
                       const textColor   = isMissing ? "#dc2626" : isUncertain ? "#ea580c" : "#1e293b";
                       const icon        = isMissing ? "🔴" : isUncertain ? "🟠" : "";
+                      const isReversed  = cfg.reverseItems?.includes(idx + 1);
                       const options = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
                         : q === "DEBQ" ? [0,1,2,3,4,5] : [1,2,3,4,5];
@@ -928,8 +938,11 @@ export default function ScorAlim() {
                           background: bgColor,
                           display: "flex", flexDirection: "column", alignItems: "center", gap: 3
                         }}>
-                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
+                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:600,display:"flex",alignItems:"center",gap:2}}>
                             {icon} Q{idx+1}
+                            {isReversed && (
+                              <span title="Item inversé" style={{fontSize:9,color:"#a78bfa",fontWeight:700,lineHeight:1}}>↺</span>
+                            )}
                           </span>
                           <select
                             value={item.v ?? ""}
