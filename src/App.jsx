@@ -7,10 +7,6 @@ import * as pdfjsLib from "pdfjs-dist";
 import { jsPDF } from "jspdf";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
-/* ─── VERSION & CHANGELOG ────────────────────────────────────── */
-const APP_VERSION = "2.0";
-const CHANGELOG   = "v2.0 : Connexion sécurisée + historique des analyses (Supabase).";
-
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const CONFIGS = {
   DEBQ: {
@@ -212,16 +208,8 @@ Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":0,"c":1},...]}
 "v" = valeur lue (entier 0-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
 
-  IES2: `Analyse ce questionnaire IES-2 (18 items).
-Mise en page : chaque item présente ses 5 options sur des lignes séparées, dans cet ordre exact :
-□ Pas du tout d'accord       → valeur 1
-□ Plutôt pas d'accord        → valeur 2
-□ Ni d'accord, ni pas d'accord → valeur 3
-□ Plutôt d'accord            → valeur 4
-□ Tout à fait d'accord       → valeur 5
-Le patient coche une seule case en traçant une croix à l'intérieur (☒).
-Lis attentivement quelle case contient la croix — ne te fie pas à la proximité spatiale, inspecte l'intérieur de chaque case.
-Pour chaque item de 1 à 18, indique la valeur ET ta confiance.
+  IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
+Pour chaque item de 1 à 18, indique la valeur cochée/entourée ET ta confiance dans la lecture.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
 "v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
@@ -279,10 +267,6 @@ export default function ScorAlim() {
   const [error, setError]             = useState(null);
   const [patient, setPatient]         = useState({ nom:"", prenom:"", date: new Date().toISOString().slice(0,10) });
 
-  // Notifications mises à jour
-  const [showChangelog, setShowChangelog] = useState(false);
-  const [swUpdate, setSwUpdate]           = useState(false);
-
   // Auth
   const [user, setUser]               = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -305,30 +289,6 @@ export default function ScorAlim() {
       setUser(session?.user ?? null);
     });
     return () => subscription.unsubscribe();
-  }, []);
-
-  // Bannière changelog : s'affiche une seule fois par version
-  useEffect(() => {
-    const seen = localStorage.getItem("scoralim_version");
-    if (seen !== APP_VERSION) {
-      setShowChangelog(true);
-      localStorage.setItem("scoralim_version", APP_VERSION);
-    }
-  }, []);
-
-  // Toast PWA : détecte quand Vercel a déployé une nouvelle version
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.ready.then(reg => {
-      reg.addEventListener("updatefound", () => {
-        const newWorker = reg.installing;
-        newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            setSwUpdate(true);
-          }
-        });
-      });
-    }).catch(() => {});
   }, []);
 
   const buildRef = () => {
@@ -358,13 +318,14 @@ export default function ScorAlim() {
     setHistoryLoading(false);
   };
 
-  const saveAnalysis = async (scoresData) => {
+  const saveAnalysis = async (scoresData, itemsData) => {
     if (!user) return;
     await supabase.from("analyses").insert({
       user_id: user.id,
       reference: buildRef(),
       questionnaire: q,
       scores: scoresData,
+      items: itemsData,
       date_analyse: patient.date,
     });
   };
@@ -540,7 +501,7 @@ export default function ScorAlim() {
     const s = calcScores(q, items.map(i => i.v));
     setScores(s);
     setStep("results");
-    saveAnalysis(s);
+    saveAnalysis(s, items);
   };
 
   const reset = () => { setStep("select"); setQ(null); setFileList([]); setExtracted(null); setScores(null); setError(null); };
@@ -667,28 +628,6 @@ export default function ScorAlim() {
 
         <div style={{maxWidth:560, margin:"0 auto", padding:"20px 16px", display:"flex", flexDirection:"column", gap:14}}>
 
-          {/* ── Bannière changelog ── */}
-          {showChangelog && (
-            <div className="no-print slide-up" style={{background:"#dcfce7",border:"1px solid #86efac",borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:16}}>🆕</span>
-              <span style={{fontSize:13,color:"#166534",flex:1,lineHeight:1.4}}>{CHANGELOG}</span>
-              <button onClick={() => setShowChangelog(false)}
-                style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#166534",padding:"0 2px",lineHeight:1}}>×</button>
-            </div>
-          )}
-
-          {/* ── Toast PWA mise à jour disponible ── */}
-          {swUpdate && (
-            <div className="no-print slide-up" style={{background:"#eff6ff",border:"1px solid #93c5fd",borderRadius:12,padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:16}}>🔄</span>
-              <span style={{fontSize:13,color:"#1d4ed8",flex:1,lineHeight:1.4}}>Une mise à jour est disponible.</span>
-              <button onClick={() => window.location.reload()}
-                style={{background:"#2563eb",border:"none",cursor:"pointer",fontSize:12,color:"white",padding:"6px 12px",borderRadius:8,fontWeight:700,whiteSpace:"nowrap"}}>
-                Recharger
-              </button>
-            </div>
-          )}
-
           {/* ══ HISTORIQUE ══ */}
           {step === "history" && (
             <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -703,22 +642,88 @@ export default function ScorAlim() {
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {history.map(h => {
-                    const s = h.scores || {};
+                    const s    = h.scores || {};
                     const cfg2 = CONFIGS[h.questionnaire];
+                    const its  = h.items  || [];
+                    const DEBQ_LBL = {0:"Je ne...",1:"Jamais",2:"Rarement",3:"Parfois",4:"Souvent",5:"Très sou."};
+                    const IES_LBL  = {1:"Pas du tout",2:"Plutôt pas",3:"Ni/ni",4:"Plutôt",5:"Tout à fait"};
+
+                    const exportHistoryPdf = () => {
+                      const doc = new jsPDF({ unit:"pt", format:"a4" });
+                      const W = 595, M = 50;
+                      let y = 50;
+                      doc.setFontSize(16).setFont(undefined,"bold").setTextColor(30,41,59);
+                      doc.text("Scor’Alim — " + (cfg2?.fullName||h.questionnaire), M, y); y+=20;
+                      doc.setFontSize(11).setFont(undefined,"normal").setTextColor(100,116,139);
+                      doc.text("Réf : " + h.reference + "   |   " + h.date_analyse, M, y); y+=24;
+                      doc.setDrawColor(226,232,240).line(M,y,W-M,y); y+=16;
+                      if (h.questionnaire !== "BES" && s.subscales) {
+                        (cfg2?.subscales||[]).forEach(sub => {
+                          const val = s.subscales[sub.key];
+                          doc.setFontSize(12).setFont(undefined,"normal").setTextColor(55,65,81);
+                          doc.text(sub.label, M, y);
+                          doc.setFont(undefined,"bold").setTextColor(30,41,59);
+                          doc.text((val?.toFixed(1)??"—"), W-M, y, {align:"right"});
+                          y += 22;
+                        });
+                        y+=6; doc.setDrawColor(241,245,249).line(M,y,W-M,y); y+=14;
+                        doc.setFontSize(12).setFont(undefined,"normal").setTextColor(100,116,139);
+                        doc.text("Score global moyen", M, y);
+                        doc.setFont(undefined,"bold").setTextColor(30,41,59);
+                        doc.text((s.total?.toFixed(1)??"—") + " / 5", W-M, y, {align:"right"}); y+=28;
+                      }
+                      if (h.questionnaire === "BES") {
+                        doc.setFontSize(24).setFont(undefined,"bold").setTextColor(30,41,59);
+                        doc.text(String(s.total??"—"), W/2, y+10, {align:"center"}); y+=36;
+                        doc.setFontSize(13).setFont(undefined,"normal").setTextColor(100,116,139);
+                        doc.text(s.severity?.label||"", W/2, y, {align:"center"}); y+=28;
+                      }
+                      doc.setFontSize(9).setTextColor(148,163,184);
+                      doc.text("Scor’Alim · Romain Lecomte, diététicien-nutritionniste · scoralim.vercel.app", W/2, 820, {align:"center"});
+                      doc.save("ScorAlim_" + h.questionnaire + "_" + h.reference + ".pdf");
+                    };
+
+                    const deleteAnalysis = async () => {
+                      if (!window.confirm("Supprimer cette analyse ? Cette action est irréversible.")) return;
+                      await supabase.from("analyses").delete().eq("id", h.id);
+                      setHistory(prev => prev.filter(x => x.id !== h.id));
+                    };
+
                     return (
                       <div key={h.id} style={{background:"white",borderRadius:14,padding:14,border:"1px solid #f1f5f9"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                        {/* En-tête */}
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <span className="mono" style={{padding:"2px 8px",borderRadius:20,background:cfg2?.color||"#6366f1",color:"white",fontSize:10,fontWeight:700}}>{h.questionnaire}</span>
                             <span style={{fontSize:13,fontWeight:700,fontFamily:"'DM Mono',monospace",color:"#1e293b"}}>{h.reference}</span>
                           </div>
-                          <span style={{fontSize:11,color:"#94a3b8"}}>{h.date_analyse}</span>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontSize:11,color:"#94a3b8"}}>{h.date_analyse}</span>
+                            <button onClick={exportHistoryPdf} style={{fontSize:11,padding:"3px 8px",borderRadius:8,border:"1px solid #e2e8f0",background:"white",cursor:"pointer",color:"#6366f1"}}>⬇️ PDF</button>
+                            <button onClick={deleteAnalysis} style={{fontSize:11,padding:"3px 8px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",cursor:"pointer",color:"#dc2626"}}>🗑</button>
+                          </div>
                         </div>
+                        {/* Score résumé */}
                         {h.questionnaire !== "BES" && s.total != null && (
-                          <div style={{fontSize:13,color:"#475569"}}>Score global : <strong>{s.total?.toFixed(1)}</strong> / 5</div>
+                          <div style={{fontSize:13,color:"#475569",marginBottom:8}}>Score global : <strong>{s.total?.toFixed(1)}</strong> / 5</div>
                         )}
                         {h.questionnaire === "BES" && s.total != null && (
-                          <div style={{fontSize:13,color:"#475569"}}>Score : <strong>{s.total}</strong> — {s.severity?.label}</div>
+                          <div style={{fontSize:13,color:"#475569",marginBottom:8}}>Score : <strong>{s.total}</strong> — {s.severity?.label}</div>
+                        )}
+                        {/* Tableau items */}
+                        {its.length > 0 && (
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(72px, 1fr))",gap:4,marginTop:6}}>
+                            {its.map((it, idx) => {
+                              const lbl = h.questionnaire==="DEBQ" ? DEBQ_LBL[it.v] : h.questionnaire==="IES2" ? IES_LBL[it.v] : null;
+                              return (
+                                <div key={idx} style={{background:"#f8fafc",borderRadius:8,padding:"4px",textAlign:"center"}}>
+                                  <div style={{fontSize:9,color:"#94a3b8"}}>Q{idx+1}</div>
+                                  <div style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{h.questionnaire==="BES"?`P${(it.v??0)+1}`:(it.v??""!==""?it.v:"—")}</div>
+                                  {lbl && <div style={{fontSize:8,color:"#64748b"}}>{lbl}</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     );
@@ -906,19 +911,24 @@ export default function ScorAlim() {
                     </div>
                   )}
                   {/* Légende */}
-                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",gap:12,marginTop:8,fontSize:11,color:"#64748b"}}>
                     <span>🔴 Réponse manquante</span>
                     <span>🟠 Lecture incertaine</span>
-                    {cfg.reverseItems?.length > 0 && <span style={{color:"#a78bfa"}}>↺ Item inversé</span>}
                   </div>
                 </div>
 
                 {/* Items grid */}
                 <div style={{background:"white",borderRadius:16,padding:14,border:"1px solid #f1f5f9"}}>
+                  {/* Texte explicatif */}
+                  <div style={{background:"#f8fafc",borderRadius:10,padding:"8px 12px",marginBottom:12,fontSize:11,color:"#475569",lineHeight:1.5}}>
+                    {q === "DEBQ" && <>Vérifiez chaque item : <strong>valeur</strong> + <strong>libellé</strong> affichés. 0=Je ne… · 1=Jamais · 2=Rarement · 3=Parfois · 4=Souvent · 5=Très sou. Corrigez si nécessaire.</>}
+                    {q === "IES2" && <>Vérifiez chaque item : <strong>valeur</strong> + <strong>libellé</strong> affichés. 1=Pas du tout · 2=Plutôt pas · 3=Ni/ni · 4=Plutôt · 5=Tout à fait. Items <strong>↔</strong> inversés — score calculé (→) indiqué.</>}
+                    {isBES && <>Vérifiez chaque paragraphe : P1=1ère option · P2=2ème · P3=3ème · P4=4ème. Corrigez si nécessaire.</>}
+                  </div>
                   <p style={{fontSize:11,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:"0 0 12px"}}>
-                    Réponses extraites — tapez pour modifier
+                    Réponses extraites — modifiez si nécessaire
                   </p>
-                  <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(72px, 1fr))", gap:6}}>
+                  <div style={{display:"grid", gridTemplateColumns:`repeat(auto-fill, minmax(${isBES?"72px":"100px"}, 1fr))`, gap:6}}>
                     {items.map((item, idx) => {
                       const isMissing   = item.v === null;
                       const isUncertain = item.c === 0 && item.v !== null;
@@ -926,8 +936,14 @@ export default function ScorAlim() {
                       const bgColor     = isMissing ? "#fef2f2" : isUncertain ? "#fff7ed" : "#fafafa";
                       const textColor   = isMissing ? "#dc2626" : isUncertain ? "#ea580c" : "#1e293b";
                       const icon        = isMissing ? "🔴" : isUncertain ? "🟠" : "";
-                      const isReversed  = cfg.reverseItems?.includes(idx + 1);
-                      const options = isBES
+                      const revItems    = (CONFIGS[q]?.reverseItems || []);
+                      const isReversed  = revItems.includes(idx + 1);
+                      const calcVal     = (isReversed && item.v !== null) ? 6 - item.v : null;
+                      const DEBQ_LBL    = {0:"Je ne...",1:"Jamais",2:"Rarement",3:"Parfois",4:"Souvent",5:"Très sou."};
+                      const IES_LBL     = {1:"Pas du tout",2:"Plutôt pas",3:"Ni/ni",4:"Plutôt",5:"Tout à fait"};
+                      const labelMap    = q === "DEBQ" ? DEBQ_LBL : q === "IES2" ? IES_LBL : null;
+                      const label       = labelMap && item.v !== null ? labelMap[item.v] : null;
+                      const options     = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
                         : q === "DEBQ" ? [0,1,2,3,4,5] : [1,2,3,4,5];
                       return (
@@ -936,13 +952,10 @@ export default function ScorAlim() {
                           borderRadius: 10,
                           padding: "6px 4px",
                           background: bgColor,
-                          display: "flex", flexDirection: "column", alignItems: "center", gap: 3
+                          display: "flex", flexDirection: "column", alignItems: "center", gap: 2
                         }}>
-                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:600,display:"flex",alignItems:"center",gap:2}}>
-                            {icon} Q{idx+1}
-                            {isReversed && (
-                              <span title="Item inversé" style={{fontSize:9,color:"#a78bfa",fontWeight:700,lineHeight:1}}>↺</span>
-                            )}
+                          <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>
+                            {icon} Q{idx+1}{isReversed ? " ↔" : ""}
                           </span>
                           <select
                             value={item.v ?? ""}
@@ -959,6 +972,8 @@ export default function ScorAlim() {
                               <option key={o} value={o}>{isBES ? `P${o+1}` : o}</option>
                             ))}
                           </select>
+                          {label && <span style={{fontSize:9,color:"#64748b",textAlign:"center",lineHeight:1.2}}>{label}</span>}
+                          {calcVal !== null && <span style={{fontSize:9,color:"#6366f1",fontWeight:600}}>→ {calcVal}</span>}
                         </div>
                       );
                     })}
@@ -968,7 +983,7 @@ export default function ScorAlim() {
                 <button
                   onClick={() => confirmItems(extractedItems)}
                   style={{padding:"14px",borderRadius:14,fontWeight:700,fontSize:14,color:"white",border:"none",cursor:"pointer",background:`linear-gradient(135deg, ${cfg.color}, ${cfg.color}cc)`}}>
-                  Calculer les scores →
+                  ✅ J'ai vérifié et je confirme
                 </button>
                 <button onClick={() => { setStep("upload"); setExtracted(null); }}
                   style={{padding:"10px",borderRadius:12,background:"transparent",border:"none",color:"#94a3b8",fontSize:13,cursor:"pointer"}}>
