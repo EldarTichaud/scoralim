@@ -471,7 +471,7 @@ export default function ScorAlim() {
       const res = await fetch("/api/analyze", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, messages:[{role:"user",content}] })
+        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content}] })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || "Erreur API");
