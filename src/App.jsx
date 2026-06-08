@@ -66,6 +66,20 @@ const CONFIGS = {
       { min:27, max:46, label:"Sévère",                      color:"#dc2626", bg:"#fef2f2" },
     ],
     ref: "Gormally et al. (1982)"
+  },
+  EQVOD: {
+    name: "EQVOD", fullName: "Échelle Qualité de Vie, Obésité et Diététique",
+    color: "#0891b2", light: "#ecfeff", itemCount: 36,
+    caption: "36 items · 5 dimensions · Qualité de vie",
+    // Pour chaque dimension : items (1-based), min brut, max brut
+    subscales: [
+      { key: "physique",     label: "Impact physique",             items: [1,2,3,4,5,6,7,8,9,10,11],    minBrut: 11, maxBrut: 55 },
+      { key: "psychosocial", label: "Impact psycho-social",        items: [12,13,14,15,16,17,18,19,20,21,22], minBrut: 11, maxBrut: 55 },
+      { key: "sexuelle",     label: "Impact sur la vie sexuelle",  items: [23,24,25,26],                 minBrut: 4,  maxBrut: 20 },
+      { key: "bienetre",     label: "Bien-être alimentaire",       items: [27,28,29,30,31],              minBrut: 5,  maxBrut: 25 },
+      { key: "regime",       label: "Vécu du régime / Diététique", items: [32,33,34,35,36],              minBrut: 5,  maxBrut: 25 },
+    ],
+    ref: "Ziegler O et al. Diabetes Metab 2005;31:273-283"
   }
 };
 
@@ -219,7 +233,21 @@ Chaque item présente 3 ou 4 propositions. Le patient en coche/entoure une seule
 Pour chaque item de 1 à 16, indique l'index de la proposition choisie ET ta confiance.
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":0,"c":1},{"v":2,"c":0},...]}
-"v" = index choisi (0=1ère proposition, 1=2ème, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`
+"v" = index choisi (0=1ère proposition, 1=2ème, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`,
+
+  EQVOD: `Analyse ce questionnaire EQVOD (Échelle Qualité de Vie, Obésité, Diététique) — 36 items numérotés de 1 à 36.
+Échelle de réponse : le patient entoure un chiffre de 1 à 5 (1 = énormément/tout le temps · 5 = jamais/pas du tout).
+Le questionnaire est organisé en 5 dimensions séparées par des lignes horizontales pleines :
+- Items 1–11 : Impact physique
+- Items 12–22 : Impact psycho-social
+- Items 23–26 : Impact sur la vie sexuelle
+- Items 27–31 : Bien-être alimentaire
+- Items 32–36 : Vécu du régime / Diététique
+Ces séparateurs t'aident à repérer les frontières entre dimensions si un numéro d'item est difficile à lire.
+Pour chaque item de 1 à 36, identifie le chiffre entouré (1, 2, 3, 4 ou 5) ET ta confiance.
+Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
+{"items":[{"v":3,"c":1},{"v":5,"c":1},...]}
+"v" = valeur lue (entier 1–5, ou null si illisible/non répondu). "c" = confiance : 1=certain, 0=incertain.`
 };
 
 /* ─── SCORING ────────────────────────────────────────────────── */
@@ -234,6 +262,25 @@ function calcScores(q, items) {
     });
     const sev = thresholds.find(t => total >= t.min && total <= t.max) || thresholds[2];
     return { type:"BES", total, severity:sev, nullCount };
+  }
+  if (q === "EQVOD") {
+    const { subscales } = CONFIGS.EQVOD;
+    const subs = {};
+    subscales.forEach(s => {
+      const vals = s.items.map(n => items[n-1]).filter(v => v != null);
+      if (!vals.length) { subs[s.key] = null; return; }
+      const sumBrut = vals.reduce((a, b) => a + b, 0);
+      // Normalisation min-max sur la plage réelle (min/max brut de la dimension entière)
+      // mais on normalise sur la somme des items répondus proportionnellement
+      const nItems = vals.length;
+      const minBrut = nItems; // 1 par item
+      const maxBrut = nItems * 5;
+      const score = Math.round(((sumBrut - minBrut) / (maxBrut - minBrut)) * 100 * 10) / 10;
+      subs[s.key] = Math.max(0, Math.min(100, score));
+    });
+    const allVals = Object.values(subs).filter(v => v != null);
+    const total = allVals.length ? Math.round(allVals.reduce((a,b)=>a+b,0)/allVals.length * 10) / 10 : null;
+    return { type:"EQVOD", subscales: subs, total, nullCount: items.filter(v=>v==null).length };
   }
   const cfg = CONFIGS[q];
   const rev = cfg.reverseItems || [];
@@ -605,7 +652,7 @@ export default function ScorAlim() {
                 </svg>
                 <span style={{fontWeight:800, fontSize:17, color:"white", letterSpacing:"-0.03em", fontFamily:"'DM Sans',sans-serif"}}>Alim</span>
               </div>
-              <div style={{fontSize:11,color:"#64748b",letterSpacing:"0.05em", marginTop:2}}>DEBQ · IES-2 · BES · ANALYSE AUTOMATIQUE</div>
+              <div style={{fontSize:11,color:"#64748b",letterSpacing:"0.05em", marginTop:2}}>DEBQ · IES-2 · BES · EQVOD · ANALYSE AUTOMATIQUE</div>
             </div>
 
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -663,14 +710,16 @@ export default function ScorAlim() {
                           doc.setFontSize(12).setFont(undefined,"normal").setTextColor(55,65,81);
                           doc.text(sub.label, M, y);
                           doc.setFont(undefined,"bold").setTextColor(30,41,59);
-                          doc.text((val?.toFixed(1)??"—"), W-M, y, {align:"right"});
+                          const suffix = h.questionnaire === "EQVOD" ? " / 100" : "";
+                          doc.text((val?.toFixed(1)??"—") + suffix, W-M, y, {align:"right"});
                           y += 22;
                         });
                         y+=6; doc.setDrawColor(241,245,249).line(M,y,W-M,y); y+=14;
                         doc.setFontSize(12).setFont(undefined,"normal").setTextColor(100,116,139);
                         doc.text("Score global moyen", M, y);
                         doc.setFont(undefined,"bold").setTextColor(30,41,59);
-                        doc.text((s.total?.toFixed(1)??"—") + " / 5", W-M, y, {align:"right"}); y+=28;
+                        const totalSuffix = h.questionnaire === "EQVOD" ? " / 100" : " / 5";
+                        doc.text((s.total?.toFixed(1)??"—") + totalSuffix, W-M, y, {align:"right"}); y+=28;
                       }
                       if (h.questionnaire === "BES") {
                         doc.setFontSize(24).setFont(undefined,"bold").setTextColor(30,41,59);
@@ -705,7 +754,10 @@ export default function ScorAlim() {
                         </div>
                         {/* Score résumé */}
                         {h.questionnaire !== "BES" && s.total != null && (
-                          <div style={{fontSize:13,color:"#475569",marginBottom:8}}>Score global : <strong>{s.total?.toFixed(1)}</strong> / 5</div>
+                          <div style={{fontSize:13,color:"#475569",marginBottom:8}}>
+                            Score global : <strong>{s.total?.toFixed(1)}</strong>
+                            {h.questionnaire === "EQVOD" ? " / 100" : " / 5"}
+                          </div>
                         )}
                         {h.questionnaire === "BES" && s.total != null && (
                           <div style={{fontSize:13,color:"#475569",marginBottom:8}}>Score : <strong>{s.total}</strong> — {s.severity?.label}</div>
@@ -804,6 +856,7 @@ export default function ScorAlim() {
                     <div>
                       <div style={{fontWeight:600,fontSize:13,color:"#4f46e5"}}>Prendre une photo</div>
                       <div style={{fontSize:12,color:"#94a3b8"}}>Questionnaire papier — autant que nécessaire</div>
+                      <div style={{fontSize:11,color:"#6366f1",marginTop:2}}>💡 Activez le flash pour une meilleure lecture</div>
                     </div>
                   </label>
                   <label style={{display:"flex",alignItems:"center",gap:12,padding:14,borderRadius:12,border:"2px dashed #e2e8f0",background:"#f8fafc",cursor:"pointer",transition:"all 0.2s"}}
@@ -924,6 +977,7 @@ export default function ScorAlim() {
                     {q === "DEBQ" && <>Vérifiez chaque item : <strong>valeur</strong> + <strong>libellé</strong> affichés. 0=Je ne… · 1=Jamais · 2=Rarement · 3=Parfois · 4=Souvent · 5=Très sou. Corrigez si nécessaire.</>}
                     {q === "IES2" && <>Vérifiez chaque item : <strong>valeur</strong> + <strong>libellé</strong> affichés. 1=Pas du tout · 2=Plutôt pas · 3=Ni/ni · 4=Plutôt · 5=Tout à fait. Items <strong>↔</strong> inversés — score calculé (→) indiqué.</>}
                     {isBES && <>Vérifiez chaque paragraphe : P1=1ère option · P2=2ème · P3=3ème · P4=4ème. Corrigez si nécessaire.</>}
+                    {q === "EQVOD" && <>Vérifiez chaque item : valeur entourée (1–5). 1=Énormément/tout le temps · 5=Jamais/pas du tout. Score élevé = bonne qualité de vie.</>}
                   </div>
                   <p style={{fontSize:11,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:"0 0 12px"}}>
                     Réponses extraites — modifiez si nécessaire
@@ -941,7 +995,8 @@ export default function ScorAlim() {
                       const calcVal     = (isReversed && item.v !== null) ? 6 - item.v : null;
                       const DEBQ_LBL    = {0:"Je ne...",1:"Jamais",2:"Rarement",3:"Parfois",4:"Souvent",5:"Très sou."};
                       const IES_LBL     = {1:"Pas du tout",2:"Plutôt pas",3:"Ni/ni",4:"Plutôt",5:"Tout à fait"};
-                      const labelMap    = q === "DEBQ" ? DEBQ_LBL : q === "IES2" ? IES_LBL : null;
+                      const EQVOD_LBL   = {1:"Énorm.",2:"Souvent",3:"Parfois",4:"Rarement",5:"Jamais"};
+                      const labelMap    = q === "DEBQ" ? DEBQ_LBL : q === "IES2" ? IES_LBL : q === "EQVOD" ? EQVOD_LBL : null;
                       const label       = labelMap && item.v !== null ? labelMap[item.v] : null;
                       const options     = isBES
                         ? (CONFIGS.BES.weights[idx] || []).map((_, oi) => oi)
@@ -1040,6 +1095,37 @@ export default function ScorAlim() {
                   </div>
                 )}
 
+                {/* EQVOD */}
+                {q==="EQVOD" && scores.subscales && (
+                  <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                    {cfg.subscales.map(s => {
+                      const val = scores.subscales[s.key];
+                      const pct = val != null ? val : 0;
+                      const color = val == null ? "#cbd5e1" : val >= 66 ? "#0891b2" : val >= 33 ? "#0e7490" : "#164e63";
+                      return (
+                        <div key={s.key}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                            <span style={{fontSize:13,fontWeight:500,color:"#374151"}}>{s.label}</span>
+                            <span className="mono" style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{val != null ? val.toFixed(1) : "—"} <span style={{fontSize:11,color:"#94a3b8",fontWeight:400}}>/ 100</span></span>
+                          </div>
+                          <div style={{height:8,background:"#f1f5f9",borderRadius:4,overflow:"hidden"}}>
+                            <div className="bar-fill" style={{height:"100%",width:`${pct}%`,background:color,borderRadius:4}}/>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {scores.total != null && (
+                      <div style={{paddingTop:10,borderTop:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",fontSize:13}}>
+                        <span style={{color:"#64748b"}}>Score moyen global</span>
+                        <span className="mono" style={{fontWeight:700,color:"#1e293b"}}>{scores.total.toFixed(1)} <span style={{color:"#94a3b8",fontWeight:400}}>/ 100</span></span>
+                      </div>
+                    )}
+                    <div style={{background:"#ecfeff",border:"1px solid #a5f3fc",borderRadius:10,padding:"8px 12px",fontSize:11,color:"#164e63"}}>
+                      Score élevé (proche de 100) = bonne qualité de vie perçue en lien avec l'obésité.
+                    </div>
+                  </div>
+                )}
+
                 {/* DEBQ / IES-2 */}
                 {(q==="DEBQ"||q==="IES2") && (
                   <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -1078,7 +1164,7 @@ export default function ScorAlim() {
                 )}
               </div>
 
-              {/* Chart */}
+              {/* Chart DEBQ / IES-2 */}
               {(q==="DEBQ"||q==="IES2") && (
                 <div className="print-card" style={{background:"white",borderRadius:20,padding:20,border:"1px solid #f1f5f9",boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
                   <p style={{fontSize:11,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:"0 0 12px"}}>Profil graphique</p>
@@ -1165,6 +1251,24 @@ export default function ScorAlim() {
                       doc.text(String(scores.total), W/2, y+10, {align:"center"}); y += 40;
                       doc.setFontSize(14).setFont(undefined,"bold").setTextColor(100,116,139);
                       doc.text(scores.severity.label, W/2, y, {align:"center"}); y += 30;
+                    }
+                    // EQVOD
+                    if (q==="EQVOD") {
+                      cfg.subscales.forEach(s => {
+                        const val = scores.subscales[s.key];
+                        doc.setFontSize(12).setFont(undefined,"normal").setTextColor(55,65,81);
+                        doc.text(s.label, M, y);
+                        doc.setFont(undefined,"bold").setTextColor(30,41,59);
+                        doc.text((val != null ? val.toFixed(1) : "—") + " / 100", W-M, y, {align:"right"});
+                        y += 22;
+                      });
+                      y += 6;
+                      doc.setDrawColor(241,245,249).line(M, y, W-M, y); y += 16;
+                      doc.setFontSize(12).setFont(undefined,"normal").setTextColor(100,116,139);
+                      doc.text("Score moyen global", M, y);
+                      doc.setFont(undefined,"bold").setTextColor(30,41,59);
+                      doc.text((scores.total?.toFixed(1)??"—") + " / 100", W-M, y, {align:"right"});
+                      y += 30;
                     }
                     // Note clinique
                     doc.setFontSize(10).setFont(undefined,"normal").setTextColor(100,116,139);
