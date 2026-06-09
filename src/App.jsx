@@ -270,13 +270,17 @@ function calcScores(q, items) {
       const vals = s.items.map(n => items[n-1]).filter(v => v != null);
       if (!vals.length) { subs[s.key] = null; return; }
       const sumBrut = vals.reduce((a, b) => a + b, 0);
-      // Normalisation min-max sur la plage réelle (min/max brut de la dimension entière)
-      // mais on normalise sur la somme des items répondus proportionnellement
-      const nItems = vals.length;
-      const minBrut = nItems; // 1 par item
-      const maxBrut = nItems * 5;
-      const score = Math.round(((sumBrut - minBrut) / (maxBrut - minBrut)) * 100 * 10) / 10;
-      subs[s.key] = Math.max(0, Math.min(100, score));
+      let score;
+      if (s.key === "physique" || s.key === "psychosocial") {
+        score = sumBrut * 1.8;
+      } else if (s.key === "sexuelle") {
+        score = sumBrut * 5;
+      } else if (s.key === "bienetre") {
+        score = Math.abs(sumBrut * 4 - 100);
+      } else if (s.key === "regime") {
+        score = sumBrut * 4;
+      }
+      subs[s.key] = Math.round(Math.max(0, Math.min(100, score)) * 10) / 10;
     });
     const allVals = Object.values(subs).filter(v => v != null);
     const total = allVals.length ? Math.round(allVals.reduce((a,b)=>a+b,0)/allVals.length * 10) / 10 : null;
