@@ -7,6 +7,14 @@ import * as pdfjsLib from "pdfjs-dist";
 import { jsPDF } from "jspdf";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mjs", import.meta.url).toString();
 
+/* ─── QUESTIONNAIRES VIERGES (téléchargement) ───────────────────── */
+const BLANK_FILES = {
+  DEBQ:  { pdf: "/questionnaires/DEBQ_questionnaire.pdf" },
+  IES2:  { pdf: "/questionnaires/IES2_questionnaire.pdf" },
+  BES:   { pdf: "/questionnaires/BES_questionnaire.pdf" },
+  EQVOD: { pdf: "/questionnaires/EQVOD_questionnaire.pdf" },
+};
+
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const CONFIGS = {
   DEBQ: {
@@ -310,7 +318,7 @@ function barColor(q, key, val) {
 
 /* ─── MAIN APP ───────────────────────────────────────────────── */
 export default function ScorAlim() {
-  const [step, setStep]               = useState("select"); // select | upload | processing | review | results | history
+  const [step, setStep]               = useState("select"); // select | upload | processing | review | results | history | downloads
   const [q, setQ]                     = useState(null);
   const [fileList, setFileList]       = useState([]);
   const [extractedItems, setExtracted]= useState(null); // [{v, c}]
@@ -664,6 +672,7 @@ export default function ScorAlim() {
                 <button onClick={reset} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>← Menu</button>
               )}
               <button onClick={()=>{loadHistory();setStep("history");}} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>📋</button>
+              <button onClick={()=>setStep("downloads")} title="Questionnaires vierges" style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>📄</button>
               <button onClick={()=>supabase.auth.signOut()} style={{fontSize:12,color:"#94a3b8",border:"1px solid #334155",borderRadius:8,padding:"5px 12px",background:"transparent",cursor:"pointer"}}>Déco</button>
             </div>
           </div>
@@ -789,6 +798,32 @@ export default function ScorAlim() {
             </div>
           )}
 
+          {/* ══ TÉLÉCHARGEMENTS — QUESTIONNAIRES VIERGES ══ */}
+          {step === "downloads" && (
+            <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <p style={{fontSize:12,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:0}}>Questionnaires vierges</p>
+                <button onClick={reset} style={{fontSize:12,color:"#6366f1",border:"none",background:"none",cursor:"pointer"}}>← Retour</button>
+              </div>
+              <p style={{fontSize:13,color:"#64748b",margin:0}}>À distribuer à vos patients avant l'analyse. Format PDF, compatible iOS et Android (s'ouvre directement dans le navigateur ou l'app de lecture par défaut).</p>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {Object.entries(CONFIGS).map(([key, c]) => (
+                  <a key={key} href={BLANK_FILES[key].pdf} target="_blank" rel="noopener noreferrer"
+                    style={{background:"white",borderRadius:14,border:"2px solid #f1f5f9",padding:"14px 16px",textDecoration:"none",display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:44,height:44,borderRadius:12,background:c.light,border:`2px solid ${c.color}33`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <span style={{fontWeight:800,fontSize:11,color:c.color,fontFamily:"'DM Mono',monospace"}}>{c.name}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:14,color:"#1e293b",letterSpacing:"-0.01em"}}>{c.fullName}</div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>PDF · {c.itemCount} items</div>
+                    </div>
+                    <span style={{color:"#6366f1",fontSize:18}}>⬇️</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ══ STEP 1 — SELECT ══ */}
           {step === "select" && (
             <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -808,6 +843,10 @@ export default function ScorAlim() {
                   <span style={{color:"#cbd5e1",fontSize:20}}>›</span>
                 </button>
               ))}
+              <button onClick={()=>setStep("downloads")}
+                style={{marginTop:4,fontSize:13,color:"#6366f1",border:"none",background:"none",cursor:"pointer",textAlign:"left",padding:"4px 2px"}}>
+                📄 Télécharger les questionnaires vierges
+              </button>
             </div>
           )}
 

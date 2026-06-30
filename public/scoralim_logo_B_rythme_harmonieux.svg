@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 90">
+  <g transform="translate(10,10) scale(2.1875)" stroke="#4f46e5" stroke-width="2.2" stroke-linecap="round" fill="none">
+    <line x1="9"  y1="5" x2="9"  y2="14"/>
+    <line x1="16" y1="5" x2="16" y2="14"/>
+    <line x1="23" y1="5" x2="23" y2="14"/>
+    <path d="M9 14 Q9 20 16 20 Q23 20 23 14"/>
+    <line x1="16" y1="20" x2="16" y2="27"/>
+  </g>
+  <text x="70" y="69" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="400" font-size="36" fill="#18181b">Scor<tspan fill="#4f46e5">'</tspan>Alim</text>
+</svg>
