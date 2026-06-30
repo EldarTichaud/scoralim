@@ -9,10 +9,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mj
 
 /* ─── QUESTIONNAIRES VIERGES (téléchargement) ───────────────────── */
 const BLANK_FILES = {
-  DEBQ:  { pdf: "/questionnaires/DEBQ_questionnaire.pdf" },
-  IES2:  { pdf: "/questionnaires/IES2_questionnaire.pdf" },
-  BES:   { pdf: "/questionnaires/BES_questionnaire.pdf" },
-  EQVOD: { pdf: "/questionnaires/EQVOD_questionnaire.pdf" },
+  DEBQ:  { pdf: "/questionnaires/DEBQ_questionnaire.pdf",  docx: "/questionnaires/DEBQ_questionnaire.docx" },
+  IES2:  { pdf: "/questionnaires/IES2_questionnaire.pdf",  docx: "/questionnaires/IES2_questionnaire.docx" },
+  BES:   { pdf: "/questionnaires/BES_questionnaire.pdf",   docx: "/questionnaires/BES_questionnaire.docx" },
+  EQVOD: { pdf: "/questionnaires/EQVOD_questionnaire.pdf", docx: "/questionnaires/EQVOD_questionnaire.docx" },
 };
 
 /* ─── CONFIG ─────────────────────────────────────────────────── */
@@ -805,20 +805,28 @@ export default function ScorAlim() {
                 <p style={{fontSize:12,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:0}}>Questionnaires vierges</p>
                 <button onClick={reset} style={{fontSize:12,color:"#6366f1",border:"none",background:"none",cursor:"pointer"}}>← Retour</button>
               </div>
-              <p style={{fontSize:13,color:"#64748b",margin:0}}>À distribuer à vos patients avant l'analyse. Format PDF, compatible iOS et Android (s'ouvre directement dans le navigateur ou l'app de lecture par défaut).</p>
+              <p style={{fontSize:13,color:"#64748b",margin:0}}>À distribuer à vos patients avant l'analyse. PDF pour impression ou consultation mobile, Word pour remplissage numérique (cases cochables).</p>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {Object.entries(CONFIGS).map(([key, c]) => (
-                  <a key={key} href={BLANK_FILES[key].pdf} target="_blank" rel="noopener noreferrer"
-                    style={{background:"white",borderRadius:14,border:"2px solid #f1f5f9",padding:"14px 16px",textDecoration:"none",display:"flex",alignItems:"center",gap:14}}>
+                  <div key={key} style={{background:"white",borderRadius:14,border:"2px solid #f1f5f9",padding:"14px 16px",display:"flex",alignItems:"center",gap:14}}>
                     <div style={{width:44,height:44,borderRadius:12,background:c.light,border:`2px solid ${c.color}33`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                       <span style={{fontWeight:800,fontSize:11,color:c.color,fontFamily:"'DM Mono',monospace"}}>{c.name}</span>
                     </div>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:600,fontSize:14,color:"#1e293b",letterSpacing:"-0.01em"}}>{c.fullName}</div>
-                      <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>PDF · {c.itemCount} items</div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{c.itemCount} items</div>
                     </div>
-                    <span style={{color:"#6366f1",fontSize:18}}>⬇️</span>
-                  </a>
+                    <div style={{display:"flex",gap:6}}>
+                      <a href={BLANK_FILES[key].pdf} target="_blank" rel="noopener noreferrer"
+                        style={{fontSize:11,fontWeight:600,padding:"5px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",textDecoration:"none",display:"flex",alignItems:"center",gap:4}}>
+                        ⬇️ PDF
+                      </a>
+                      <a href={BLANK_FILES[key].docx} target="_blank" rel="noopener noreferrer"
+                        style={{fontSize:11,fontWeight:600,padding:"5px 10px",borderRadius:8,border:"1px solid #dbeafe",background:"#eff6ff",color:"#2563eb",textDecoration:"none",display:"flex",alignItems:"center",gap:4}}>
+                        ⬇️ Word
+                      </a>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
