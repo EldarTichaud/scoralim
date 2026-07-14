@@ -637,10 +637,17 @@ export default function ScorAlim() {
         ];
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) throw new Error("Session expirée — reconnectez-vous.");
+
       const res = await fetch("/api/analyze", {
         method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000, messages:[{role:"user",content}] })
+        headers:{
+          "Content-Type":"application/json",
+          "Authorization": `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ messages:[{role:"user",content}] })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || "Erreur API");
