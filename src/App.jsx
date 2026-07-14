@@ -409,6 +409,8 @@ export default function ScorAlim() {
   // Historique
   const [history, setHistory]         = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearch, setHistorySearch]   = useState("");
+  const [historyFilter, setHistoryFilter]   = useState("ALL");
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -766,13 +768,43 @@ export default function ScorAlim() {
                 <p style={{fontSize:12,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:0}}>Historique des analyses</p>
                 <button onClick={reset} style={{fontSize:12,color:"#6366f1",border:"none",background:"none",cursor:"pointer"}}>← Retour</button>
               </div>
+
+              {/* Barre de recherche + filtre */}
+              <div style={{display:"flex",gap:8}}>
+                <input
+                  type="text"
+                  placeholder="🔍 Rechercher une référence…"
+                  value={historySearch}
+                  onChange={e=>setHistorySearch(e.target.value)}
+                  style={{flex:1,fontSize:13,padding:"8px 12px",borderRadius:10,border:"1px solid #e2e8f0",background:"white",outline:"none",color:"#1e293b"}}
+                />
+                <select
+                  value={historyFilter}
+                  onChange={e=>setHistoryFilter(e.target.value)}
+                  style={{fontSize:12,padding:"8px 10px",borderRadius:10,border:"1px solid #e2e8f0",background:"white",color:"#475569",cursor:"pointer"}}
+                >
+                  <option value="ALL">Tous</option>
+                  {Object.keys(CONFIGS).map(k=>(
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </div>
+
               {historyLoading ? (
                 <p style={{color:"#94a3b8",fontSize:13}}>Chargement…</p>
               ) : history.length === 0 ? (
                 <p style={{color:"#94a3b8",fontSize:13}}>Aucune analyse enregistrée.</p>
-              ) : (
+              ) : (() => {
+                const filtered = history.filter(h => {
+                  const matchRef = h.reference?.toLowerCase().includes(historySearch.toLowerCase());
+                  const matchQ   = historyFilter === "ALL" || h.questionnaire === historyFilter;
+                  return matchRef && matchQ;
+                });
+                return filtered.length === 0 ? (
+                  <p style={{color:"#94a3b8",fontSize:13}}>Aucun résultat pour cette recherche.</p>
+                ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {history.map(h => {
+                  {filtered.map(h => {
                     const s    = h.scores || {};
                     const cfg2 = CONFIGS[h.questionnaire];
                     const its  = h.items  || [];
@@ -865,7 +897,8 @@ export default function ScorAlim() {
                     );
                   })}
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
