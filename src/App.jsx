@@ -218,44 +218,115 @@ function parseIesDocx(xml) {
 }
 
 const PROMPTS = {
-  DEBQ: `Analyse ce questionnaire DEBQ (33 items).
-Mise en page : chaque item présente ses options sur une ligne horizontale :
-□ Jamais  □ Rarement  □ Parfois  □ Souvent  □ Très souvent  (□ Je ne...)
+  DEBQ: `Tu analyses une photo du questionnaire DEBQ (Dutch Eating Behavior Questionnaire), 33 questions.
+
+MISE EN PAGE :
+Chaque question est en gras et numérotée implicitement (de haut en bas, 1 à 33).
+Sous chaque question, les options sont disposées horizontalement sur une ligne :
+  ☐ Jamais   ☐ Rarement   ☐ Parfois   ☐ Souvent   ☐ Très souvent
+Certaines questions ont une option supplémentaire sur la ligne suivante, formulée "Je ne [verbe] jamais..." (ex : "Je ne suis jamais irrité(e)"). C'est une 6e option à part entière.
 Le patient coche une seule case en traçant une croix à l'intérieur (☒).
-Lis attentivement quelle case contient la croix — ne te fie pas à la proximité spatiale, inspecte l'intérieur de chaque case.
-L'option "Je ne..." peut apparaître en fin de ligne ou déborder sur la ligne suivante : traite-la comme une option à part entière.
-Règle de cotation : "Je ne..." = 0 ; Jamais = 1 ; Rarement = 2 ; Parfois = 3 ; Souvent = 4 ; Très souvent = 5.
-Pour chaque item de 1 à 33, indique la valeur ET ta confiance.
+
+VALEURS À RETOURNER :
+Je ne... = 0 · Jamais = 1 · Rarement = 2 · Parfois = 3 · Souvent = 4 · Très souvent = 5
+
+RÈGLES DE LECTURE STRICTES :
+- Inspecte l'intérieur de chaque case individuellement — ne déduis jamais d'après la position.
+- L'option "Je ne..." peut déborder sur la ligne suivante : c'est la 6e option, valeur 0.
+- Si deux cases semblent cochées sur un item, mets c=0 et v=valeur la plus probable.
+- Si la croix est à cheval entre deux cases ou ambiguë, mets c=0.
+- Si aucune case n'est cochée, mets v=null, c=0.
+- Ne suppose jamais une réponse "logique" — lis strictement ce qui est coché.
+- c=1 uniquement si tu es certain à 100%. Dès le moindre doute : c=0.
+
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":0,"c":1},...]}
-"v" = valeur lue (entier 0-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
+33 objets exactement. "v" = entier 0-5 ou null. "c" = 1 (certain) ou 0 (moindre doute).`,
 
-  IES2: `Analyse ce questionnaire IES-2 (18 items, échelle 1-5 : 1=pas du tout d'accord, 5=tout à fait d'accord).
-Pour chaque item de 1 à 18, indique la valeur cochée/entourée ET ta confiance dans la lecture.
+  IES2: `Tu analyses une photo du questionnaire IES-2 (Intuitive Eating Scale-2), 18 items.
+
+MISE EN PAGE :
+Chaque item est numéroté (1 à 18) et présente une affirmation suivie de 5 cases à cocher disposées VERTICALEMENT, dans cet ordre exact :
+  ☐ Pas du tout d'accord       → valeur 1
+  ☐ Plutôt pas d'accord        → valeur 2
+  ☐ Ni d'accord, ni pas d'accord → valeur 3
+  ☐ Plutôt d'accord            → valeur 4
+  ☐ Tout à fait d'accord       → valeur 5
+Le patient coche une seule case par item.
+Attention : une note de bas de page (ex : "Cette affirmation ne concerne pas les interdits...") peut apparaître entre deux items — ignore-la, elle ne compte pas comme un item.
+
+RÈGLES DE LECTURE STRICTES :
+- Lis les items dans l'ordre numérique strict (1 à 18) — ne saute pas.
+- La case cochée est celle qui contient une marque visible à l'intérieur (croix, crochet, trait).
+- Si deux cases sont cochées sur un même item, mets c=0 et v=valeur la plus probable.
+- Si la marque est entre deux cases, mets c=0.
+- Si aucune case n'est cochée, mets v=null, c=0.
+- Ne suppose jamais une réponse "cohérente" avec les autres items.
+- c=1 uniquement si tu es certain à 100%. Dès le moindre doute : c=0.
+
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":2,"c":0},...]}
-"v" = valeur lue (entier 1-5, ou null si illisible). "c" = confiance : 1=certain, 0=incertain ou illisible.`,
+18 objets exactement. "v" = entier 1-5 ou null. "c" = 1 (certain) ou 0 (moindre doute).`,
 
-  BES: `Analyse ce questionnaire BES - Binge Eating Scale (16 items).
-Chaque item présente 3 ou 4 propositions. Le patient en coche/entoure une seule.
-Pour chaque item de 1 à 16, indique l'index de la proposition choisie ET ta confiance.
+  BES: `Tu analyses une photo du questionnaire BES (Binge Eating Scale), 16 groupes (items I à XVI).
+
+MISE EN PAGE :
+Chaque item est introduit par un numéro en chiffres romains (I, II, III... XVI) suivi d'une ligne horizontale.
+Sous ce séparateur, 3 ou 4 propositions sont listées verticalement, précédées d'une case et d'un chiffre :
+  ☐ 1- [texte de la première proposition]
+  ☐ 2- [texte de la deuxième proposition]
+  ☐ 3- [texte de la troisième proposition]
+  ☐ 4- [texte de la quatrième proposition, si elle existe]
+Le patient coche une seule case par groupe.
+
+VALEURS À RETOURNER (index 0-based) :
+Proposition 1 cochée → v=0
+Proposition 2 cochée → v=1
+Proposition 3 cochée → v=2
+Proposition 4 cochée → v=3
+
+NOMBRE DE PROPOSITIONS PAR ITEM :
+Items I, II, III, IV, V, VII, VIII, IX, X, XI, XII, XIV, XV, XVI → 4 propositions (v possible : 0,1,2,3)
+Items VI, XIII → 3 propositions (v possible : 0,1,2)
+
+RÈGLES DE LECTURE STRICTES :
+- Parcours les items dans l'ordre I à XVI (1 à 16).
+- Identifie la case cochée (croix ou marque visible à l'intérieur de ☐).
+- Si deux cases sont cochées, mets c=0 et v=index le plus probable.
+- Si la marque est ambiguë ou entre deux cases, mets c=0.
+- Si aucune case n'est cochée, mets v=null, c=0.
+- c=1 uniquement si tu es certain à 100%. Dès le moindre doute : c=0.
+
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":0,"c":1},{"v":2,"c":0},...]}
-"v" = index choisi (0=1ère proposition, 1=2ème, etc.), ou null si illisible. "c" = confiance : 1=certain, 0=incertain.`,
+16 objets exactement. "v" = index 0-based ou null. "c" = 1 (certain) ou 0 (moindre doute).`,
 
-  EQVOD: `Analyse ce questionnaire EQVOD (Échelle Qualité de Vie, Obésité, Diététique) — 36 items numérotés de 1 à 36.
-Échelle de réponse : le patient entoure un chiffre de 1 à 5 (1 = énormément/tout le temps · 5 = jamais/pas du tout).
-Le questionnaire est organisé en 5 dimensions séparées par des lignes horizontales pleines :
-- Items 1–11 : Impact physique
-- Items 12–22 : Impact psycho-social
-- Items 23–26 : Impact sur la vie sexuelle
-- Items 27–31 : Bien-être alimentaire
-- Items 32–36 : Vécu du régime / Diététique
-Ces séparateurs t'aident à repérer les frontières entre dimensions si un numéro d'item est difficile à lire.
-Pour chaque item de 1 à 36, identifie le chiffre entouré (1, 2, 3, 4 ou 5) ET ta confiance.
+  EQVOD: `Tu analyses une photo du questionnaire EQVOD (Échelle Qualité de Vie, Obésité, Diététique), 36 items.
+
+MISE EN PAGE :
+Chaque item est numéroté (1 à 36) et présente une affirmation commençant par "À cause de mon poids...".
+Le patient répond en entourant UN chiffre parmi 1 · 2 · 3 · 4 · 5 disposés horizontalement.
+Échelle : 1 = Énormément / tout le temps → 5 = Jamais / pas du tout.
+
+Le questionnaire est structuré en 5 dimensions séparées par des lignes horizontales pleines et des sous-titres :
+- Items 1–11   : Impact physique
+- Items 12–22  : Impact psycho-social
+- Items 23–26  : Impact sur la vie sexuelle
+- Items 27–31  : Bien-être alimentaire
+- Items 32–36  : Vécu du régime / Diététique
+Ces séparateurs t'aident à repérer les frontières entre dimensions si un numéro est difficile à lire.
+
+RÈGLES DE LECTURE STRICTES :
+- Un chiffre "entouré" = cercle visible autour du chiffre. Un simple trait ou point ne suffit pas.
+- Si le cercle chevauche deux chiffres, mets c=0 et v=chiffre le plus probable.
+- Si aucun chiffre n'est entouré, mets v=null, c=0.
+- Ne suppose pas qu'un chiffre est entouré parce qu'il "semble logique" au regard de l'item.
+- Vérifie le numéro de chaque item : les sous-titres de dimension ne sont pas des items.
+- c=1 uniquement si tu es certain à 100%. Dès le moindre doute : c=0.
+
 Réponds UNIQUEMENT avec ce JSON, sans texte ni balises markdown :
 {"items":[{"v":3,"c":1},{"v":5,"c":1},...]}
-"v" = valeur lue (entier 1–5, ou null si illisible/non répondu). "c" = confiance : 1=certain, 0=incertain.`
+36 objets exactement. "v" = entier 1-5 ou null. "c" = 1 (certain) ou 0 (moindre doute).`
 };
 
 /* ─── SCORING ────────────────────────────────────────────────── */
