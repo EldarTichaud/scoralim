@@ -15,6 +15,43 @@ const BLANK_FILES = {
   EQVOD: { pdf: "/questionnaires/EQVOD_questionnaire.pdf", docx: "/questionnaires/EQVOD_questionnaire.docx" },
 };
 
+/* ─── HISTORIQUE DES MISES À JOUR ───────────────────────────────── */
+const CHANGELOG = [
+  {
+    version: "1.3",
+    date: "14 juillet 2026",
+    items: [
+      "Amélioration des prompts de lecture vision (DEBQ, IES-2, BES, EQVOD) — critère de confiance plus strict pour réduire les faux positifs en étape de révision",
+      "Recherche et filtre par questionnaire dans l'historique des analyses",
+    ]
+  },
+  {
+    version: "1.2",
+    date: "30 juin 2026",
+    items: [
+      "Téléchargement des questionnaires vierges (PDF et Word) depuis l'application",
+      "Manifest PWA — icône correcte à l'installation sur PC et mobile",
+      "Nouveau logo Scor'Alim",
+    ]
+  },
+  {
+    version: "1.1",
+    date: "Mi-juin 2026",
+    items: [
+      "Ajout du questionnaire EQVOD (Échelle Qualité de Vie, Obésité et Diététique) — 36 items, 5 dimensions",
+    ]
+  },
+  {
+    version: "1.0",
+    date: "Fin mai 2026",
+    items: [
+      "Authentification et historique des analyses (Supabase)",
+      "Scoring validé pour DEBQ, BES et IES-2",
+      "Export PDF des résultats",
+    ]
+  },
+];
+
 /* ─── CONFIG ─────────────────────────────────────────────────── */
 const CONFIGS = {
   DEBQ: {
@@ -389,7 +426,7 @@ function barColor(q, key, val) {
 
 /* ─── MAIN APP ───────────────────────────────────────────────── */
 export default function ScorAlim() {
-  const [step, setStep]               = useState("select"); // select | upload | processing | review | results | history | downloads
+  const [step, setStep]               = useState("select"); // select | upload | processing | review | results | history | downloads | changelog
   const [q, setQ]                     = useState(null);
   const [fileList, setFileList]       = useState([]);
   const [extractedItems, setExtracted]= useState(null); // [{v, c}]
@@ -902,6 +939,31 @@ export default function ScorAlim() {
             </div>
           )}
 
+          {/* ══ NOUVEAUTÉS — HISTORIQUE DES MISES À JOUR ══ */}
+          {step === "changelog" && (
+            <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <p style={{fontSize:12,fontWeight:600,color:"#94a3b8",letterSpacing:"0.08em",textTransform:"uppercase",margin:0}}>Nouveautés</p>
+                <button onClick={reset} style={{fontSize:12,color:"#6366f1",border:"none",background:"none",cursor:"pointer"}}>← Retour</button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {CHANGELOG.map((c, i) => (
+                  <div key={c.version} style={{background:"white",borderRadius:14,border:"1px solid #f1f5f9",padding:16}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+                      <span className="mono" style={{padding:"2px 10px",borderRadius:20,background:i===0?"#4f46e5":"#e2e8f0",color:i===0?"white":"#475569",fontSize:11,fontWeight:700}}>v{c.version}</span>
+                      <span style={{fontSize:12,color:"#94a3b8"}}>{c.date}</span>
+                    </div>
+                    <ul style={{margin:0,paddingLeft:18,display:"flex",flexDirection:"column",gap:5}}>
+                      {c.items.map((it, j) => (
+                        <li key={j} style={{fontSize:13,color:"#334155",lineHeight:1.5}}>{it}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ══ TÉLÉCHARGEMENTS — QUESTIONNAIRES VIERGES ══ */}
           {step === "downloads" && (
             <div className="slide-up" style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -958,6 +1020,10 @@ export default function ScorAlim() {
               <button onClick={()=>setStep("downloads")}
                 style={{marginTop:4,fontSize:13,color:"#6366f1",border:"none",background:"none",cursor:"pointer",textAlign:"left",padding:"4px 2px"}}>
                 📄 Télécharger les questionnaires vierges
+              </button>
+              <button onClick={()=>setStep("changelog")}
+                style={{fontSize:13,color:"#6366f1",border:"none",background:"none",cursor:"pointer",textAlign:"left",padding:"4px 2px"}}>
+                🕓 Historique des mises à jour
               </button>
             </div>
           )}
@@ -1455,4 +1521,4 @@ export default function ScorAlim() {
       </div>
     </>
   );
-} 
+}
